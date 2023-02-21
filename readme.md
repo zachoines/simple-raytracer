@@ -28,76 +28,74 @@ You can run the program like so:
 Follow tutorial to install GNU C++ on windows:
 https://www.youtube.com/watch?v=rgCJbsCSARM&ab_channel=LearningLad
 
-1.) First download and install MinGW-w64 for windows
+1. First download and install MinGW-w64 for windows
     https://www.mingw-w64.org/downloads/#msys2
 
-2.) Istall compiler and debugger for C/C++
-    a.) open MSYS
-        1.) Update the package database and base packages using
+2. Install compiler and debugger for C/C++
+    * open MSYS
+        * Update the package database and base packages using
         pacman -Syu
 
-        2.) Update rest of the base packages 
+        * Update rest of the base packages 
         pacman -Su
 
-    b.) open MSYS2 MinGW 64-bit
-        1.) To install compiler ( gcc ) for C and C++
-            
-            i.) Print all available packages
+    2. open MSYS2 MinGW 64-bit
+        * To install compiler ( gcc ) for C and C++
+            - Print all available packages
                 pacman -Ss gcc 
 
-            ii.) In the output you will find one for C/C++
+            - In the output you will find one for C/C++
                 mingw64/mingw-w64-x86_64-gcc 12.2.0-9 (mingw-w64-x86_64-toolchain)
                 GNU Compiler Collection (C,C++,OpenMP) for MinGW-w64
 
-            iii.) Now install GCC
+            - Now install GCC
                 pacman -S mingw-w64-x86_64-gcc
 
-            IV.) Check if its installed
+            - Check if its installed
                 gcc --version
                 g++ --version
 
-        2.) To install the debugger ( gdb ) for C and C++
-    
-            i.) Print all available gdb version
+        * To install the debugger ( gdb ) for C and C++
+            - Print all available gdb version
                 pacman -Ss gdb 
             
-            ii.) Install correct version
+            - Install correct version
                 pacman -S mingw-w64-x86_64-gdb
 
-            iii.) Check if its installed
+            - Check if its installed
                 gdb --version
 
-3.) Set your environmental variables
+3. Set your environmental variables
     Add C:\msys64\mingw64\bin to your "path" variable
 
-4.) Set up build environment in visual studio
-    a.) Configure c_cpp_properties.json
-        i.) Open command pallete
+4. Set up build environment in visual studio
+    * Configure c_cpp_properties.json
+        * Open command pallete
             run "C/C++: Edit Configurations (UI)"
-        ii.) Set compiler 
+        * Set compiler 
             - IntelliSense mode "gcc-x86"
             - Compiler Path "C:\msys64\mingw64\bin\gcc.exe"
 
-5.) Now configure a C/C++ build task
-    a.) This will create a new task
+5. Now configure a C/C++ build task
+    * This will create a new task
         In the Menu bar of visual studio code 
         Terminal -> Configure Default Build Task -> C/C++: g++.exe build active file
         
-    b.) Open and edit the generated task
+    * Open and edit the generated task
         under args add: 
             "-g3" (for debugging with max info. Don't use -g)
             "-Wall" (warnings) 
 
-6.) Build and run C/C++ file
-    a.) Run default build task (One created prior)
+6. Build and run C/C++ file
+    * Run default build task (One created prior)
         Ctrl + Shift + B (Generates main.exe)
-    b.) Run the executable 
-        i.) open command prompt
-        ii.) Navigate to directory
-        iii.) Run "main.exe"
+    * Run the executable 
+        * open command prompt
+        * Navigate to directory
+        * Run "main.exe"
 
-7.) Set up debugger
-    a.) Install visual studio code
-    b.) In VSCode, install C/C++ plugin
-    c.) Configure a launch.json file, with a C/C++ launch entry
-    d.) Add replace miDebuggerPath with "C:\\msys64\\mingw64\\bin\\gdb.exe",
+7. Set up debugger
+    * Install visual studio code
+    * In VSCode, install C/C++ plugin
+    * Configure a launch.json file, with a C/C++ launch entry
+    * Add replace miDebuggerPath with "C:\\msys64\\mingw64\\bin\\gdb.exe",
