@@ -1,13 +1,9 @@
 # Overview
-This program generates a very simple PPM image based on a properties file. 
-The outputted image has a black background with a single line across its horizontal. 
-The properties file should contain the width and height of the output image, 
-following this format on a single line: imsize width height. 
-Omitting any one of these will result in the program instructing the user to re-enter.
-The path of the input properties file is passed a an argument to the program. 
-
-Example usage:
-./main.exe input_desc.txt
+This program is a raytracing based renderer that generates images using a properties file as input. This is a work in progress. 
+Currently supported features are: 
+- Hard shadows
+- Phong Illumination
+- Spheres
 
 # Compile Program
 First navigate to directory with main.cpp. Then run these commands:  
@@ -24,7 +20,7 @@ You can run the program like so:
 .\raytracer1b.exe .\scene_complex.txt
 .\raytracer1b.exe .\scene_simple.txt
 
-# Configure debugging on windows
+# Configure debugging on Windows
 Follow tutorial to install GNU C++ on windows:
 https://www.youtube.com/watch?v=rgCJbsCSARM&ab_channel=LearningLad
 
