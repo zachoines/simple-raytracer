@@ -7,19 +7,30 @@ Currently supported features are:
 
 ![Example](Examples/demo_image.png)
 
-# Compile Program
+# Compile
 First navigate to directory with main.cpp. Then run these commands:  
 - cmake .
 - cmake --build ./
 
 On windows, this will create 'Debug' directory with 'SimpleRayTracer.exe' within.
 
-# Running the Program
+# Using
 
 Drag and drop a config file like "scene_simple.txt" or "scene_complex.txt" into the same directory as the executable.
 
 You can run the program like so:
 - .\raytracer1b.exe .\rubber_eraser.txt
+
+Valid arguements for config files include:
+- eye   eyex eyey eyez
+- viewdir   vdirx  vdiry  vdirz
+- updir   upx  upy  upz
+- hfov   fovh
+- imsize   width  height
+- bkgcolor   r  g  b
+- mtlcolor   Od Od Od Os Os Os ka kd ks n
+- light x y z w r g b
+- sphere   cx  cy  cz  r
 
 # Configure debugging on Windows
 Follow tutorial to install GNU C++ on windows:
