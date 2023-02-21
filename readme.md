@@ -9,8 +9,8 @@ Currently supported features are:
 
 # Compile Program
 First navigate to directory with main.cpp. Then run these commands:  
-cmake .
-cmake --build ./
+- cmake .
+- cmake --build ./
 
 On windows, this will create 'Debug' directory with 'SimpleRayTracer.exe' within.
 
@@ -19,8 +19,7 @@ On windows, this will create 'Debug' directory with 'SimpleRayTracer.exe' within
 Drag and drop a config file like "scene_simple.txt" or "scene_complex.txt" into the same directory as the executable.
 
 You can run the program like so:
-.\raytracer1b.exe .\scene_complex.txt
-.\raytracer1b.exe .\scene_simple.txt
+- .\raytracer1b.exe .\rubber_eraser.txt
 
 # Configure debugging on Windows
 Follow tutorial to install GNU C++ on windows:
