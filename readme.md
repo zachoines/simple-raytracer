@@ -21,8 +21,8 @@ On windows, this will create 'Debug' directory with 'SimpleRayTracer.exe' within
 Drag and drop a config file like "scene_simple.txt" or "scene_complex.txt" into the same directory as the executable.
 
 You can run the program like so:
-.\SimpleRayTracer.exe .\scene_complex.txt
-.\SimpleRayTracer.exe .\scene_simple.txt
+.\raytracer1b.exe .\scene_complex.txt
+.\raytracer1b.exe .\scene_simple.txt
 
 # Configure debugging on windows
 Follow tutorial to install GNU C++ on windows:
@@ -39,7 +39,7 @@ https://www.youtube.com/watch?v=rgCJbsCSARM&ab_channel=LearningLad
         * Update rest of the base packages 
         pacman -Su
 
-    2. open MSYS2 MinGW 64-bit
+    * open MSYS2 MinGW 64-bit
         * To install compiler ( gcc ) for C and C++
             - Print all available packages
                 pacman -Ss gcc 
