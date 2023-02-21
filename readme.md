@@ -5,6 +5,8 @@ Currently supported features are:
 - Phong Illumination
 - Spheres
 
+![Example](Examples/demo_image.png)
+
 # Compile Program
 First navigate to directory with main.cpp. Then run these commands:  
 cmake .
