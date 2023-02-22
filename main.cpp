@@ -1,262 +1,22 @@
 #include <iostream>
 #include <fstream>
-#include <string>
 #include <sstream>
 #include <vector>
-#include <numeric>
-#include <algorithm>
-#include <cmath> 
 #include <map>
+#include "src/definitions.h"
+#include "src/config.h"
+#include "src/utility.h"
 
 typedef unsigned char byte;
-
-#define MIN_PIXEL_VALUE 0
-#define MAX_PIXEL_VALUE 255
-#define PI 3.14159265
-#define d 5.0 // Can be any number
-#define num_commands 7
-#define num_obj_types 2
-#define Mat2d std::vector<std::vector<byte>>
-#define Mat3d std::vector<Mat2d>
-
-const std::string valid_commands[] = {"eye", "viewdir", "updir", "hfov", "imsize", "bkgcolor", "mtlcolor"};
-const std::string object_types[] = {"sphere", "light"}; // Object is anything with multiple instances
-
-struct Vector3 
-{
-    float values[3] = { 0.0 };
-
-    float x () 
-    {
-        return values[0];
-    }
-
-    float y () 
-    {
-        return values[1];
-    }
-
-    float z () 
-    {
-        return values[2];
-    }
-
-    float sum() 
-    {
-        return values[0] + values[1] + values[2];
-    } 
-
-    float dot(Vector3 other) 
-    {
-        return (*this * other).sum();
-    }
-
-    float mag() 
-    {
-        return std::sqrt(this->square().sum());
-    }
-
-    Vector3 square() 
-    {
-        Vector3 result = *this;
-        result.values[0] *= result.values[0];
-        result.values[1] *= result.values[1];
-        result.values[2] *= result.values[2];
-        return result;
-    } 
-
-    Vector3 cross (Vector3 other) 
-    {
-        Vector3 result;
-        result.values[0]=this->y()*other.z() - this->z()*other.y();
-        result.values[1]=this->z()*other.x() - this->x()*other.z();
-        result.values[2]=this->x()*other.y() - this->y()*other.x();
-        return result;
-    }
-    
-    Vector3 norm() 
-    {
-        return *this / mag();
-    }
-
-    // Op overloads
-    Vector3 operator * (float other) 
-    {
-        Vector3 result = *this;
-        result.values[0] *= other;
-        result.values[1] *= other;
-        result.values[2] *= other;
-        return result;
-    }
-
-    Vector3 operator * (Vector3 other) 
-    {
-        Vector3 result = *this;
-        result.values[0] *= other.values[0];
-        result.values[1] *= other.values[1];
-        result.values[2] *= other.values[2];
-        return result;
-    }
-
-    Vector3 operator / (float other) 
-    {
-        Vector3 result = *this;
-        result.values[0] /= other;
-        result.values[1] /= other;
-        result.values[2] /= other;
-        return result;
-    }
-
-    Vector3 operator / (Vector3 other) 
-    {
-        Vector3 result = *this;
-        result.values[0] /= other.values[0];
-        result.values[1] /= other.values[1];
-        result.values[2] /= other.values[2];
-        return result;
-    }
-
-    Vector3 operator + (Vector3 other) 
-    {
-        Vector3 result = *this;
-        result.values[0] += other.values[0];
-        result.values[1] += other.values[1];
-        result.values[2] += other.values[2];
-        return result;
-    }
-
-    Vector3 operator - (Vector3 other) 
-    {
-        Vector3 result = *this;
-        result.values[0] -= other.values[0];
-        result.values[1] -= other.values[1];
-        result.values[2] -= other.values[2];
-        return result;
-    }
-
-    Vector3 operator - (float other) 
-    {
-        Vector3 result = *this;
-        result.values[0] -= other;
-        result.values[1] -= other;
-        result.values[2] -= other;
-        return result;
-    }
-
-    float operator [] (int index) 
-    {
-        if (index < 0 || index > 2) {
-            throw std::out_of_range("Vector3 only can be index from 0 to 2");
-        }
-        return values[index];
-    }
-};
-
-
-struct Color 
-{
-    float r, g, b;
-    
-    Color operator * (Color other) 
-    {
-        Color result = *this;
-        result.r = std::clamp(other.r * result.r, 0.0f, 1.0f);
-        result.g = std::clamp(other.g * result.g, 0.0f, 1.0f);
-        result.b = std::clamp(other.b * result.b, 0.0f, 1.0f);
-        return result;
-    }
-
-    Color operator * (float other) 
-    {
-        Color result = *this;
-        result.r = std::clamp(other * result.r, 0.0f, 1.0f);
-        result.g = std::clamp(other * result.g, 0.0f, 1.0f);
-        result.b = std::clamp(other * result.b, 0.0f, 1.0f);
-        return result;
-    }
-
-    Color operator + (Color other) 
-    {
-        Color result = *this;
-        result.r = std::clamp(other.r + result.r, 0.0f, 1.0f);
-        result.g = std::clamp(other.g + result.g, 0.0f, 1.0f);
-        result.b = std::clamp(other.b + result.b, 0.0f, 1.0f);
-        return result;
-    }
-};
-
-/*
-    Material Defined by the Phong illumination Model:
-    diffuse Diffuse color
-    specular Specular color
-    ka Ambient reflectivity weight
-    kd Diffuse reflectivity weight
-    ks Specular reflectivity weight
-    n Specular highlight falloff
-
-*/
-struct Material 
-{
-    Color diffuse;
-    Color specular;
-    float ka, kd, ks, n;
-};
-
-struct SceneObject 
-{
-    int id;
-    std::string type;
-    Material material;
-};
-
-struct Sphere : SceneObject 
-{
-    Vector3 center;
-    float radius;
-};
-
-struct Light
-{
-    Vector3 position; // For positional lights
-    Vector3 direction; // For directional lights
-    float w;
-    Color color;
-};
+#define Mat3d std::vector<std::vector<std::vector<byte>>>
+#define RayTraceResults std::map<SceneObject*, std::vector<Intersection>>
 
 /*
     Function hoisting
 */
 Color ShadeRay(SceneObject* intersected_object, Vector3 object_intersection, Vector3 view_origin, Vector3 view_direction, Material material, Vector3 world_location, Vector3 surface_normal, std::vector<Light> scene_lights, std::map<std::string, std::vector<SceneObject*>> scene_objects) ;
-std::map<SceneObject*, std::vector<float>> TraceRay(std::map<std::string, std::vector<SceneObject*>> scene_objects, Vector3 view_origin, Vector3 ray);
+RayTraceResults TraceRay(std::map<std::string, std::vector<SceneObject*>> scene_objects, Vector3 view_origin, Vector3 ray);
 
-/*
-    Transforms an input from range 1 to range 2
-
-    x Input
-    in_min Minimum value or input range
-    in_max Maximum value or input range
-    out_min Minimum value or output range
-    out_max Maximum value or output range 
-*/
-float map(float x, float in_min, float in_max, float out_min, float out_max) 
-{
-    return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
-}
-
-/*
-    Removes the extension from a string path. Removes in place.
-    ex.) path.txt => path
-
-    path String to modify
-*/
-void remove_extension(std::string &path)
-{
-    std::size_t dot = path.rfind(".");
-    if (dot != std::string::npos)
-    {
-        path.resize(dot);
-    }
-}
 
 /*
     material Material of the object hit by ray 
@@ -292,9 +52,9 @@ Color ShadeRay(SceneObject* intersected_object, Vector3 object_intersection, Vec
                 For directional lights, if intersection distance is greater than 0, then a shadow will be cast.
             */
             Vector3 ray = light.direction * -1;
-            std::map<SceneObject*, std::vector<float>> objects_intersections = TraceRay(scene_objects, object_intersection, ray);
+            RayTraceResults objects_intersections = TraceRay(scene_objects, object_intersection, ray);
 
-            for ( auto [object, distances] : objects_intersections) 
+            for ( auto [object, intersections] : objects_intersections) 
             {    
                 if (object->type == "sphere")
                 {
@@ -306,9 +66,9 @@ Color ShadeRay(SceneObject* intersected_object, Vector3 object_intersection, Vec
                         continue;
                     }
                     
-                    for (float distance : distances) 
+                    for (auto intersection : intersections) 
                     {
-                        if (distance > 0.0) 
+                        if (intersection.distance > 0.0) 
                         {
                             shadow_mask = { 0.0, 0.0, 0.0 };
                             obstructed = true;
@@ -331,9 +91,9 @@ Color ShadeRay(SceneObject* intersected_object, Vector3 object_intersection, Vec
                 Ray-trace from point of intersection to light source, detecting other scene objects are occluding light.
             */
             Vector3 ray = (light.position - object_intersection).norm();
-            std::map<SceneObject*, std::vector<float>> objects_intersections = TraceRay(scene_objects, object_intersection, ray);
+            RayTraceResults objects_intersections = TraceRay(scene_objects, object_intersection, ray);
           
-            for ( auto [object, distances] : objects_intersections) 
+            for ( auto [object, intersections] : objects_intersections) 
             {    
                 if (object->type == "sphere") 
                 {
@@ -347,9 +107,9 @@ Color ShadeRay(SceneObject* intersected_object, Vector3 object_intersection, Vec
                     /*
                         Find if object intersection is in-between object and light source
                     */ 
-                    for (float distance : distances) 
+                    for (auto intersection : intersections) 
                     {
-                        if (distance > 0.0 && distance < distance_to_light) 
+                        if (intersection.distance > 0.0 && intersection.distance < distance_to_light) 
                         {
                             shadow_mask = { 0.0, 0.0, 0.0 };
                             obstructed = true;
@@ -388,16 +148,15 @@ Color ShadeRay(SceneObject* intersected_object, Vector3 object_intersection, Vec
 /*
     Returns object and their intersection points with provided ray
 */
-std::map<SceneObject*, std::vector<float>> TraceRay(std::map<std::string, std::vector<SceneObject*>> scene_objects, Vector3 view_origin, Vector3 ray) 
+RayTraceResults TraceRay(std::map<std::string, std::vector<SceneObject*>> scene_objects, Vector3 view_origin, Vector3 ray) 
 {
-    std::map<SceneObject*, std::vector<float>> objects_intersections;
-    std::vector<float> distances;
+    RayTraceResults objects_intersections;
     for ( auto [type, objects] : scene_objects) {
         if (type == "sphere") 
         {
-            for (int k = 0; k < (int)objects.size(); k++) 
+            for (std::size_t k = 0; k < objects.size(); k++) 
             {
-                std::vector<float> distances;
+                std::vector<Intersection> intersections;
                 SceneObject* object = objects.at(k);
                 Sphere* sphere_object = (Sphere*)object;
                 Vector3 dir = (view_origin - sphere_object->center);
@@ -418,16 +177,68 @@ std::map<SceneObject*, std::vector<float>> TraceRay(std::map<std::string, std::v
                 */
                 float determinant = std::pow(B, 2.0) - (4.0 * A * C);
                 if (!std::signbit(determinant)) {
-                    distances.push_back((-B + std::sqrt(determinant)) / (2.0 * A));
-                    distances.push_back((-B - std::sqrt(determinant)) / (2.0 * A));
+                    float distance1 = (-B + std::sqrt(determinant)) / (2.0 * A);
+                    intersections.push_back({
+                        distance1,
+                        view_origin + (ray * distance1)
+                    });
+
+                    float distance2 = (-B - std::sqrt(determinant)) / (2.0 * A);
+                    intersections.push_back({
+                        distance2,
+                        view_origin + (ray * distance2)
+                    });
+                    
                 } else if (determinant == 0) {
-                    distances.push_back(-B / 2.0);
+                    float distance = -B / 2.0;
+                    intersections.push_back({
+                        distance,
+                        view_origin + (ray * distance)
+                    });
                 }
 
-                objects_intersections[object] = distances;
+                objects_intersections[object] = intersections;
 
                 /* Usefull assertion */
                 // sphere_object->radius == sqrtf(((sphere_intersection - sphere_object->center).square().sum()));     
+            }
+        } else if (type == "triangle") {
+            for (std::size_t k = 0; k < objects.size(); k++) 
+            {
+                std::vector<Intersection> intersections; // Will only ever be one intersection per triangle (But other objects may differ)
+                SceneObject* object = objects.at(k);
+                Triangle* triangle_object = (Triangle*)object;
+                Vector3 e1 = triangle_object->vertex[1] - triangle_object->vertex[0];
+                Vector3 e2 = triangle_object->vertex[2] - triangle_object->vertex[0];
+                Vector3 normal = e1.cross(e2);
+
+                /*
+                    Determine if ray intersects plane that contains trangle:
+                    - Ax + By + Cz + D = 0, equation of plane.
+                    - A, B, and C are from triangle_normal.
+                    - x, y, and z is any point on the plane.
+
+                    From these, we can calculate:
+                    D == -triangle_normal.dot(triangle_vertex)
+                    distance_to_plane == -(triangle_normal.dot(view_origin) + D) / triangle_normal.dot(ray_direction)
+                    ray_plane_intersection_point == view_origin + (distance_to_plane * ray_direction);
+                */
+               
+                float dem = normal.dot(ray); 
+                if (dem == 0.0) {
+                    continue; // We have missed the plane containing the triangle
+                }
+                float D = -normal.dot(triangle_object->vertex[0]);
+                float distance = -(normal.dot(view_origin) + D) / dem;
+                Vector3 intersection = view_origin + (ray * distance);
+
+
+                /*
+                    Now determine if the intersection point lies withing traingle
+                */
+
+                intersections.push_back({distance, intersection});
+                objects_intersections[object] = intersections;
             }
         }
     }
@@ -445,6 +256,9 @@ std::map<SceneObject*, std::vector<float>> TraceRay(std::map<std::string, std::v
     res_h Number of pixels in the horizontal direction
     res_w Number of pixels in the virtical direction
     background_color Color of the background pixels
+
+    v x1 y1 z1
+    f v1 v2 v3
 */
 Mat3d create_view_window_and_ray_trace(Vector3 view_origin, Vector3 view_direction, Vector3 view_up, float fov_h, float res_h, float res_w, std::map<std::string, std::vector<SceneObject*>> scene_objects, std::vector<Light> scene_lights, Color background_color) 
 {
@@ -506,22 +320,23 @@ Mat3d create_view_window_and_ray_trace(Vector3 view_origin, Vector3 view_directi
                 Then, ray-trace through scene finding intersecting objects
             */
             Vector3 ray = (view_window[j][i] - view_origin).norm();
-            std::map<SceneObject*, std::vector<float>> objects_intersections = TraceRay(scene_objects, view_origin, ray);
+            RayTraceResults objects_intersections = TraceRay(scene_objects, view_origin, ray);
 
-            for ( auto [object, distances] : objects_intersections) 
+            for ( auto [object, intersections] : objects_intersections) 
             {    
                 if (object->type == "sphere") 
                 {
-                    for (float distance : distances) 
+                    for (auto intersection : intersections) 
                     {
-                        if (distance < min_distance) {
-                            min_distance = distance;
-                            Sphere* sphere_object = (Sphere*)object;
-                            Vector3 sphere_intersection = view_origin + (ray * distance);               
-                            Vector3 surface_normal = (sphere_intersection - sphere_object->center) / sphere_object->radius; 
-                            pixel_color = ShadeRay(object, sphere_intersection, view_origin, view_direction, sphere_object->material, surface_normal, scene_lights, scene_objects);
+                        if (intersection.distance < min_distance) {
+                            min_distance = intersection.distance;
+                            Sphere* sphere_object = (Sphere*)object;               
+                            Vector3 surface_normal = (intersection.point - sphere_object->center) / sphere_object->radius; 
+                            pixel_color = ShadeRay(object, intersection.point, view_origin, view_direction, sphere_object->material, surface_normal, scene_lights, scene_objects);
                         }
                     }    
+                } else if (object->type == "triangle") {
+
                 }
             }
 
@@ -544,13 +359,13 @@ bool check_args(std::string q, bool scene_objects = false)
 {
     if (scene_objects) {
         for(int x = 0; x < num_obj_types; x++){
-            if (object_types[x].find(q, 0) != std::string::npos){
+            if (object_types[x] == q){
                 return true;
             }
         }
     } else {
         for(int x = 0; x < num_commands; x++){
-            if (valid_commands[x].find(q, 0) != std::string::npos){
+            if (valid_commands[x] == q){
                 return true;
             }
         }
@@ -576,8 +391,10 @@ int main(int argc,char* argv[])
 {
     std::map<std::string, std::vector<std::string>> commands;
     std::map<std::string, std::vector<SceneObject*>> scene_objects;
+    std::map<std::string, Vector3> vertices;
     std::vector<Light> scene_lights;
-    int obj_id_counter = 0;
+    unsigned int obj_id_counter = 0;
+    unsigned int vertex_counter = 0;
     
     if(argc > 1)
     {
@@ -604,14 +421,18 @@ int main(int argc,char* argv[])
                     }
                 }
 
+                // If blank line or command without arguements
+                if (image_properties.size() <= 1) {
+                    continue;
+
                 // If arguement is a scene properties command
-                if (image_properties.size() > 1 && check_args(image_properties[0]) ) {
+                } else if (check_args(image_properties[0])) {
                     std::string command = image_properties[0];
                     image_properties.erase(image_properties.begin());
                     commands[command] = image_properties;
                 
                 // If arguement is a scene object
-                } else if (image_properties.size() > 1 && check_args(image_properties[0], true)) {
+                } else if (check_args(image_properties[0], true)) {
                     obj_id_counter++;
                     if (image_properties[0] == "sphere") 
                     {
@@ -684,7 +505,41 @@ int main(int argc,char* argv[])
                         }
                         
                         scene_lights.push_back(light);
-                    }   
+                    } else if (image_properties[0] == "v") {
+                        try
+                        {
+                            vertex_counter++;
+                            vertices[std::to_string(vertex_counter)] = {
+                                {std::stof(image_properties[1]), std::stof(image_properties[2]), std::stof(image_properties[3])}
+                            };
+                        }
+                        catch(const std::exception& e)
+                        {
+                            std::cout << "ERROR: Invalid args for 'vertex' object. Please verify." << std::endl;
+                            return 0;
+                        }
+                    }  else if (image_properties[0] == "f") {
+                        Triangle* triangle = new Triangle();
+                        obj_id_counter++;
+                        triangle->type = "triangle";
+                        triangle->id = obj_id_counter; 
+                        
+                        try
+                        {
+                            triangle->vertex[0] = vertices[image_properties[1]];
+                            triangle->vertex[1] = vertices[image_properties[2]];
+                            triangle->vertex[2] = vertices[image_properties[3]];
+                            
+                            scene_objects[image_properties[0]].push_back(
+                                (SceneObject*) triangle
+                            );
+                        }
+                        catch(const std::exception& e)
+                        {
+                            std::cout << "ERROR: Invalid args for 'f' object. Please verify." << std::endl;
+                            return 0;
+                        }
+                    }
                 }
             }
         } else {

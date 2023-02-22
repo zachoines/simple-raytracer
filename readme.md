@@ -32,7 +32,7 @@ Valid arguements for config files include:
 - light x y z w r g b
 - sphere   cx  cy  cz  r
 
-# Configure debugging on Windows
+# Configure Debugging on Windows
 Follow tutorial to install GNU C++ on windows:
 https://www.youtube.com/watch?v=rgCJbsCSARM&ab_channel=LearningLad
 
