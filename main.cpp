@@ -14,7 +14,7 @@ typedef unsigned char byte;
 /*
     Function hoisting
 */
-Color ShadeRay(SceneObject* intersected_object, Vector3 object_intersection, Vector3 view_origin, Vector3 view_direction, Material material, Vector3 world_location, Vector3 surface_normal, std::vector<Light> scene_lights, std::map<std::string, std::vector<SceneObject*>> scene_objects) ;
+Color ShadeRay(SceneObject* intersected_object, Intersection intersection, Vector3 view_origin, Vector3 view_direction, Material material, Vector3 world_location, std::vector<Light> scene_lights, std::map<std::string, std::vector<SceneObject*>> scene_objects) ;
 RayTraceResults TraceRay(std::map<std::string, std::vector<SceneObject*>> scene_objects, Vector3 view_origin, Vector3 ray);
 
 
@@ -24,13 +24,14 @@ RayTraceResults TraceRay(std::map<std::string, std::vector<SceneObject*>> scene_
     surface_normal The normal vector of the object where ray hits
     scene_lights All the lights currently in the scene
 */
-Color ShadeRay(SceneObject* intersected_object, Vector3 object_intersection, Vector3 view_origin, Vector3 view_direction, Material material, Vector3 surface_normal, std::vector<Light> scene_lights, std::map<std::string, std::vector<SceneObject*>> scene_objects) 
+Color ShadeRay(SceneObject* intersected_object, Intersection intersection, Vector3 view_origin, Vector3 view_direction, std::vector<Light> scene_lights, std::map<std::string, std::vector<SceneObject*>> scene_objects, bool use_texture=false) 
 {
     Vector3 V = view_direction * -1.0;
-    Vector3 N = surface_normal;
-    Color ambient = material.diffuse * material.ka;
+    Vector3 N = intersection.normal;
+    Material material = intersected_object->material;
     Color tmp = { 0.0, 0.0, 0.0 };
     Color shadow_mask = { 1.0, 1.0, 1.0 };
+    Color ambient = material.diffuse * material.ka;
     std::vector<bool> obstructions;
     
     for (Light light : scene_lights) 
@@ -52,7 +53,7 @@ Color ShadeRay(SceneObject* intersected_object, Vector3 object_intersection, Vec
                 For directional lights, if intersection distance is greater than 0, then a shadow will be cast.
             */
             Vector3 ray = light.direction * -1;
-            RayTraceResults objects_intersections = TraceRay(scene_objects, object_intersection, ray);
+            RayTraceResults objects_intersections = TraceRay(scene_objects, intersection.point, ray);
 
             for ( auto [object, intersections] : objects_intersections) 
             {    
@@ -83,19 +84,19 @@ Color ShadeRay(SceneObject* intersected_object, Vector3 object_intersection, Vec
         */
         else 
         {
-            L = (light.position - object_intersection).norm();
-            float distance_to_light = std::sqrt((object_intersection - light.position).square().sum());
+            L = (light.position - intersection.point).norm();
+            float distance_to_light = std::sqrt((intersection.point - light.position).square().sum());
 
             /*
                 Determine if shadow exists:
                 Ray-trace from point of intersection to light source, detecting other scene objects are occluding light.
             */
-            Vector3 ray = (light.position - object_intersection).norm();
-            RayTraceResults objects_intersections = TraceRay(scene_objects, object_intersection, ray);
+            Vector3 ray = (light.position - intersection.point).norm();
+            RayTraceResults objects_intersections = TraceRay(scene_objects, intersection.point, ray);
           
             for ( auto [object, intersections] : objects_intersections) 
             {    
-                if (object->type == "sphere") 
+                if ((object->type == "sphere") || (object->type == "face")) 
                 {
                     /*
                         For spheres, we do not consider self intersections
@@ -131,16 +132,23 @@ Color ShadeRay(SceneObject* intersected_object, Vector3 object_intersection, Vec
         //     }
         // }
 
-        /*
-            Unit vector halfway between the direction to the light and the direction to the viewer 
-            This is the direction associated with the brightest highlight
-        */
-        H = ((L + V) / 2.0).norm();
-        Color diffuse = (material.diffuse * material.kd) * std::max(0.0f, N.dot(L)); 
-        Color specular = (material.specular * material.ks) * pow(std::max(0.0f, N.dot(H)), material.n); 
-        tmp = tmp + (light.color * shadow_mask * (diffuse + specular));
+        if (use_texture) {
+
+        } else {
+            /*
+                Unit vector halfway between the direction to the light and the direction to the viewer 
+                This is the direction associated with the brightest highlight
+            */
+            H = ((L + V) / 2.0).norm();
+            Color diffuse = (material.diffuse * material.kd) * std::max(0.0f, N.dot(L));
+            Color specular = (material.specular * material.ks) * pow(std::max(0.0f, N.dot(H)), material.n); 
+            tmp = tmp + (light.color * shadow_mask * (diffuse + specular));
+        }
     }
     
+    /*
+        Ambient + specular
+    */
     return ambient + tmp;
 }
 
@@ -175,25 +183,32 @@ RayTraceResults TraceRay(std::map<std::string, std::vector<SceneObject*>> scene_
                     When the sign of the determinant is Negative, there are no solutions.
                     When the determinant is Zero, there there is one solution.
                 */
+                
                 float determinant = std::pow(B, 2.0) - (4.0 * A * C);
                 if (!std::signbit(determinant)) {
                     float distance1 = (-B + std::sqrt(determinant)) / (2.0 * A);
+                    Vector3 intersection1 = view_origin + (ray * distance1);
                     intersections.push_back({
                         distance1,
-                        view_origin + (ray * distance1)
+                        intersection1,
+                        (intersection1 - sphere_object->center) / sphere_object->radius
                     });
-
+                    
                     float distance2 = (-B - std::sqrt(determinant)) / (2.0 * A);
+                    Vector3 intersection2 = view_origin + (ray * distance2);
                     intersections.push_back({
                         distance2,
-                        view_origin + (ray * distance2)
+                        intersection2,
+                        (intersection2 - sphere_object->center) / sphere_object->radius
                     });
                     
                 } else if (determinant == 0) {
                     float distance = -B / 2.0;
+                    Vector3 intersection = view_origin + (ray * distance);
                     intersections.push_back({
                         distance,
-                        view_origin + (ray * distance)
+                        intersection,
+                        (intersection - sphere_object->center) / sphere_object->radius
                     });
                 }
 
@@ -202,15 +217,15 @@ RayTraceResults TraceRay(std::map<std::string, std::vector<SceneObject*>> scene_
                 /* Usefull assertion */
                 // sphere_object->radius == sqrtf(((sphere_intersection - sphere_object->center).square().sum()));     
             }
-        } else if (type == "triangle") {
+        } else if (type == "face") {
             for (std::size_t k = 0; k < objects.size(); k++) 
             {
                 std::vector<Intersection> intersections; // Will only ever be one intersection per triangle (But other objects may differ)
                 SceneObject* object = objects.at(k);
-                Triangle* triangle_object = (Triangle*)object;
-                Vector3 e1 = triangle_object->vertex[1] - triangle_object->vertex[0];
-                Vector3 e2 = triangle_object->vertex[2] - triangle_object->vertex[0];
-                Vector3 normal = e1.cross(e2);
+                Face* face_object = (Face*)object;
+                Vector3 e1 = face_object->vertex[1] - face_object->vertex[0];
+                Vector3 e2 = face_object->vertex[2] - face_object->vertex[0];
+                Vector3 normal = face_object->surface_normal;
 
                 /*
                     Determine if ray intersects plane that contains trangle:
@@ -228,17 +243,101 @@ RayTraceResults TraceRay(std::map<std::string, std::vector<SceneObject*>> scene_
                 if (dem == 0.0) {
                     continue; // We have missed the plane containing the triangle
                 }
-                float D = -normal.dot(triangle_object->vertex[0]);
+                
+                float D = -normal.dot(face_object->vertex[0]);
                 float distance = -(normal.dot(view_origin) + D) / dem;
                 Vector3 intersection = view_origin + (ray * distance);
-
-
+                
                 /*
-                    Now determine if the intersection point lies withing traingle
+                    Determine if the intersection point lies within triangle:
+                    - We do this by finding the Barycentric Coordinates of the triangle
+                        
+                        If p is some linear combination of p0, p1, and p2 (vertices of triangle), with weights a, b, and g, 
+
+                            p = a * p0 + b * p1 + g * p2
+    
+                        given that
+
+                            0 < a < 1 and 0 < b < 1 and 0 < g < 1
+                            a + b + g = 1
+                            a = 1 – ( b + g )
+
+                        , then the point p is inside the triangle defined by p0, p1, and p2.
+
+                    - For simplicity, we solve in terms of just b and g.
+
+                        p = a * p0 + b * p1 + g * p2
+                        p = (1 – b – g)p0 + b * p1 + g * p2
+                        p = p0 + b(p1 – p0) + g(p2 – p0) 
+
+                        ep = p – p0
+                        e1 = p1 – p0
+                        e2 = p2 – p0
+                    
+                        b * e1 + g * e2 = ep
+                        b * e1 + g * e2 = ep
+
+                    - Because the dot products of two vectors results in a scalar, we can furthure simplify the above two
+                        equations by taking dot products using e1/e2 on both side of equations.
+
+                        e1 . (b * e1 + g * e2) = e1.dot(ep) ==> b(e1 . e1) + g(e1 . e2) = e1 . ep
+                        e2 . (b * e1 + g * e2) = e2.dot(ep) ==> b(e2 . e1) + g(e2 . e2) = e2 . ep
+
+                    - now, just create variables for each dot product (d1 .. d6)
+
+                        b*d1 + g*d2 = d5
+                        b*d3 + g*d4 = d6
+
+                    - And now we have just two equation with two unknowns we can solve,
+                        Ax = b, 
+                        A = [[d1, d2],
+                             [d3, d4]]
+                        b = [[d5],
+                             [d6]]
+                        x = [[b], 
+                             [g]]
+
+                        b = (d4*d5 – d2*d6)/(d1*d4 – d2*d3)
+                        g = (d1*d6 – d2*d5)/(d1*d4 – d2*d3)
+
                 */
 
-                intersections.push_back({distance, intersection});
-                objects_intersections[object] = intersections;
+                Vector3 ep;
+                float d1, d2, d3, d4, d5, d6, a, b, g;
+                ep = intersection - face_object->vertex[0];
+                d1 = e1.dot(e1);
+                d2 = e1.dot(e2);
+                d3 = d2;
+                d4 = e2.dot(e2);
+                d5 = e1.dot(ep);
+                d6 = e2.dot(ep);
+                float det = (d1*d4 - d2*d3);
+                if (det != 0) {
+                    b = (d4*d5 - d2*d6) / det;
+                    g = (d1*d6 - d2*d5) / det;
+                    a = 1.0 - ( b + g );
+
+                    /*
+                        Usefull assertions:
+                        int test = intersection.sum() + D;
+                        Vector3 intersection_point_test = face_object->vertex[0] * (1 - b - g) + face_object->vertex[1] * b + face_object->vertex[2] * g;
+                    */
+                    
+                    if (((0 < a) && (a < 1)) && ((0 < b) && ( b < 1)) && ((0 < g) && (g < 1))) {
+                        Vector3 normal;
+                        if (face_object->smooth_shading) {
+                            normal = (
+                                (face_object->vertex_normal[0] * a) + 
+                                (face_object->vertex_normal[1] * b) + 
+                                (face_object->vertex_normal[2] * g)
+                            ).norm();    
+                        } else {
+                            normal = face_object->surface_normal;
+                        }
+                        intersections.push_back({distance, intersection, normal});
+                        objects_intersections[object] = intersections;
+                    }
+                }
             }
         }
     }
@@ -328,15 +427,20 @@ Mat3d create_view_window_and_ray_trace(Vector3 view_origin, Vector3 view_directi
                 {
                     for (auto intersection : intersections) 
                     {
-                        if (intersection.distance < min_distance) {
+                        if (intersection.distance > 0 && intersection.distance < min_distance) {
                             min_distance = intersection.distance;
-                            Sphere* sphere_object = (Sphere*)object;               
-                            Vector3 surface_normal = (intersection.point - sphere_object->center) / sphere_object->radius; 
-                            pixel_color = ShadeRay(object, intersection.point, view_origin, view_direction, sphere_object->material, surface_normal, scene_lights, scene_objects);
+                            // Sphere* sphere_object = (Sphere*)object;
+                            pixel_color = ShadeRay(object, intersection, view_origin, view_direction, scene_lights, scene_objects);
                         }
                     }    
-                } else if (object->type == "triangle") {
-
+                } else if (object->type == "face") {
+                    for (auto intersection : intersections) {
+                        if (intersection.distance > 0 && intersection.distance < min_distance) {
+                            min_distance = intersection.distance;
+                            Face* face_object = (Face*)object;                            
+                            pixel_color = ShadeRay(object, intersection, view_origin, view_direction, scene_lights, scene_objects, face_object->has_texture);
+                        }
+                    }
                 }
             }
 
@@ -376,7 +480,8 @@ bool check_args(std::string q, bool scene_objects = false)
 
 
 /*
-    Args for this programs:
+    Valid Args for config file:
+
     eye   eyex eyey eyez
     viewdir   vdirx  vdiry  vdirz
     updir   upx  upy  upz
@@ -385,16 +490,24 @@ bool check_args(std::string q, bool scene_objects = false)
     bkgcolor   r  g  b
     mtlcolor   Od Od Od Os Os Os ka kd ks n
     light x y z w r g b
-    sphere   cx  cy  cz  r
+    sphere   cx  cy  cz  r 
+    vn nx ny nz -- (Vertex normal)
+    # -- (For comments)
+    f v1/vt1/vn1 v2/vt2/vn2 v3/vt2/vn -- (smooth-shaded, textured triangle)
+    f v1//vn1 v2//vn2 v3//vn3 -- (smooth-shaded, untextured triangle)
+    f v1/vt1 v2/vt2 v3/vt2  -- (non-smooth-shaded, textured triangle)
 */
 int main(int argc,char* argv[])
 {
     std::map<std::string, std::vector<std::string>> commands;
     std::map<std::string, std::vector<SceneObject*>> scene_objects;
-    std::map<std::string, Vector3> vertices;
+    std::map<unsigned int, Vector3> vertices;
+    std::map<unsigned int, Vector3> normals;
+    std::map<unsigned int, Texture> textures;
     std::vector<Light> scene_lights;
     unsigned int obj_id_counter = 0;
     unsigned int vertex_counter = 0;
+    unsigned int normal_counter = 0;
     
     if(argc > 1)
     {
@@ -416,7 +529,8 @@ int main(int argc,char* argv[])
 
                 // Strip line of whitespace
                 while(std::getline(ss, del, ' ')) {
-                    if (del != "") {
+                    // If not blank string or comment
+                    if (!del.empty() || del.at(0) != '#') {
                         image_properties.push_back(del);
                     }
                 }
@@ -506,37 +620,119 @@ int main(int argc,char* argv[])
                         
                         scene_lights.push_back(light);
                     } else if (image_properties[0] == "v") {
+                        /*
+                            Extract Vertex. Validate Correctness.
+                        */
                         try
                         {
                             vertex_counter++;
-                            vertices[std::to_string(vertex_counter)] = {
+                            vertices[vertex_counter] = {
                                 {std::stof(image_properties[1]), std::stof(image_properties[2]), std::stof(image_properties[3])}
                             };
                         }
                         catch(const std::exception& e)
                         {
-                            std::cout << "ERROR: Invalid args for 'vertex' object. Please verify." << std::endl;
+                            std::cout << "ERROR: Invalid args for vertex. Please verify." << std::endl;
+                            return 0;
+                        }
+                    } else if (image_properties[0] == "vn") {
+                        /*
+                            Extract Vertex normal. Validate Correctness.
+                        */
+                        try
+                        {
+                            normal_counter++;
+                            normals[normal_counter] = {
+                                {std::stof(image_properties[1]), std::stof(image_properties[2]), std::stof(image_properties[3])}
+                            };
+                        }
+                        catch(const std::exception& e)
+                        {
+                            std::cout << "ERROR: Invalid args for vertex normal. Please verify." << std::endl;
                             return 0;
                         }
                     }  else if (image_properties[0] == "f") {
-                        Triangle* triangle = new Triangle();
+                        /*
+                            Extract Face. Validate Correctness.
+                        */
+                        Face* triangle = new Face();
                         obj_id_counter++;
-                        triangle->type = "triangle";
+                        triangle->type = "face";
                         triangle->id = obj_id_counter; 
                         
                         try
                         {
-                            triangle->vertex[0] = vertices[image_properties[1]];
-                            triangle->vertex[1] = vertices[image_properties[2]];
-                            triangle->vertex[2] = vertices[image_properties[3]];
+                            for (int i = 1; i <= 3; i++) {
+                                // Parse for vertex normals and/or texture coordinates
+                                unsigned int t; // Texture
+                                unsigned int n; // Normal
+                                unsigned int v; // Vertex
+                                if (sscanf(image_properties[i].c_str(), "%d/%d/%d", &v, &t, &n ) == 3) {
+                                    //success reading a face in v/t/n format. For a smooth shaded, textured triangle.
+                                    triangle->vertex[i - 1] = vertices[v];
+                                    triangle->vertex_normal[i - 1] = normals[n];
+                                    triangle->smooth_shading = true;
+                                    triangle->texture = textures[t];
+                                    triangle->has_texture = true;
+
+                                } else if (sscanf(image_properties[i].c_str(), "%d//%d", &v, &n ) == 2) {
+                                    //success reading a face in v//n format. For a smooth shaded, untextured triangle.
+                                    triangle->vertex[i - 1] = vertices[v];
+                                    triangle->vertex_normal[i - 1] = normals[n];
+                                    triangle->smooth_shading = true;
+                                    triangle->has_texture = false;
+
+                                } else if (sscanf(image_properties[i].c_str(), "%d/%d", &v, &t) == 2) {
+                                    //success reading a face in v/t format. For a non-smooth shaded, textured triangle.
+                                    triangle->vertex[i - 1] = vertices[v];
+                                    triangle->smooth_shading = false;
+                                    triangle->texture = textures[t];
+                                    triangle->has_texture = true;
+                                
+                                } else if (sscanf(image_properties[i].c_str(), "%d", &v) == 1) {
+                                    //success reading a face in v format; proceed accordingly
+                                    triangle->vertex[i - 1] = vertices[v];
+                                    triangle->smooth_shading = false;
+                                    triangle->has_texture = false;                               
+                                } else {
+                                    //error reading face data
+                                    std::cout << "ERROR: Invalid args for 'f' object. Please verify." << std::endl;
+                                    return 0;
+                                }
+                            };
+
+                            // Enter material information
+                            try
+                            {
+                                triangle->material.diffuse.r = std::stof(commands.at("mtlcolor")[0]);
+                                triangle->material.diffuse.g = std::stof(commands.at("mtlcolor")[1]);
+                                triangle->material.diffuse.b = std::stof(commands.at("mtlcolor")[2]);
+                                triangle->material.specular.r = std::stof(commands.at("mtlcolor")[3]);
+                                triangle->material.specular.g = std::stof(commands.at("mtlcolor")[4]);
+                                triangle->material.specular.b = std::stof(commands.at("mtlcolor")[5]);
+                                triangle->material.ka = std::stof(commands.at("mtlcolor")[6]);
+                                triangle->material.kd = std::stof(commands.at("mtlcolor")[7]);
+                                triangle->material.ks = std::stof(commands.at("mtlcolor")[8]);
+                                triangle->material.n = std::stof(commands.at("mtlcolor")[9]);
+                            }
+                            catch(const std::exception& e)
+                            {
+                                std::cout << "ERROR: Invalid args for 'mtlcolor' (material color) command. Please verify." << std::endl;
+                                return 0;
+                            }
+
+                            // Calculate main surface normal
+                            Vector3 e1 = triangle->vertex[1] - triangle->vertex[0];
+                            Vector3 e2 = triangle->vertex[2] - triangle->vertex[0];
+                            triangle->surface_normal = e1.cross(e2).norm();
                             
-                            scene_objects[image_properties[0]].push_back(
+                            scene_objects["face"].push_back(
                                 (SceneObject*) triangle
                             );
                         }
                         catch(const std::exception& e)
                         {
-                            std::cout << "ERROR: Invalid args for 'f' object. Please verify." << std::endl;
+                            std::cout << "ERROR: Invalid args for 'f' (face) object. Please verify." << std::endl;
                             return 0;
                         }
                     }

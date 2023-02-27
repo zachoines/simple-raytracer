@@ -185,6 +185,10 @@ struct Material
     float ka, kd, ks, n;
 };
 
+struct Texture {
+
+};
+
 struct SceneObject 
 {
     unsigned int id;
@@ -198,9 +202,14 @@ struct Sphere : SceneObject
     float radius;
 };
 
-struct Triangle : SceneObject 
+struct Face : SceneObject 
 {
+    Vector3 surface_normal;
     Vector3 vertex[3];
+    bool smooth_shading;
+    Vector3 vertex_normal[3];
+    bool has_texture;
+    Texture texture;
 };
 
 struct Light
@@ -215,4 +224,5 @@ struct Intersection
 {
     float distance;
     Vector3 point;
+    Vector3 normal;
 };
