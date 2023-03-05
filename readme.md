@@ -7,14 +7,14 @@ Currently supported features are:
 
 ![Example](Examples/demo_image.png)
 
-# Compile
+# Compile program
 First navigate to directory with main.cpp. Then run these commands:  
 - cmake .
 - cmake --build ./
 
 On windows, this will create 'Debug' directory with 'SimpleRayTracer.exe' within.
 
-# Using
+# Using program
 
 Drag and drop a config file like "scene_simple.txt" or "scene_complex.txt" into the same directory as the executable.
 
@@ -31,6 +31,12 @@ Valid arguements for config files include:
 - mtlcolor   Od Od Od Os Os Os ka kd ks n
 - light x y z w r g b
 - sphere   cx  cy  cz  r
+- n nx ny nz (Vertex normal)
+- \# 
+- f v1/vt1/vn1 v2/vt2/vn2 v3/vt2/vn
+- f v1//vn1 v2//vn2 v3//vn3
+- f v1/vt1 v2/vt2 v3/vt2
+- texture texture.ppm
 
 # Configure Debugging on Windows
 Follow tutorial to install GNU C++ on windows:

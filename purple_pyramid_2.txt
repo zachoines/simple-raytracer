@@ -4,7 +4,7 @@ updir 0 1 0
 hfov 60
 imsize 512 256
 bkgcolor 0.1 0.1 0.1
-light -2 1 0 1 1 1 1
+light -1 1 0 1 1 1 1
 mtlcolor 1 0 1 1 1 1 0.1 0.4 0.4 20
 
 

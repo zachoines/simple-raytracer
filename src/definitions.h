@@ -4,7 +4,11 @@
 #include <algorithm>
 #include <string>
 #include <stdexcept>
-
+#include "config.h"
+struct Point {
+    float x;
+    float y;
+};
 struct Vector3 
 {
     float values[3] = { 0.0 };
@@ -135,7 +139,6 @@ struct Vector3
     }
 };
 
-
 struct Color 
 {
     float r, g, b;
@@ -168,6 +171,45 @@ struct Color
     }
 };
 
+class Mat3D {
+private:
+    size_t N, M, L;
+    std::vector<int> m_data;
+
+public:
+    /*
+        i ith row "y"
+        j jth column "x"
+        k kth entry in 3rd dim "z"
+
+        Matrix N x M X K, where N is rows and M is columns
+        Index at (i, j, k), where i is rows and j is columns
+         
+    */
+    Mat3D(size_t m, size_t n, size_t l, int def = 0):
+        N(n), M(m), L(l), m_data(n*m*l, def)
+    {}
+    
+    int& operator()(size_t i, size_t j, size_t k) {
+        return m_data.at(index(i, j, k));
+    }
+
+    int index(size_t i, size_t j, size_t k) {
+        return M * L * i + L * j + k;
+    }
+};
+
+struct Texture {
+    public:
+    float height, width;
+    Texture(float height, float width) {
+        this->width = width;
+        this->height = height;
+        image = new Mat3D(height, width, 3);
+    }
+    Mat3D* image;
+};
+
 /*
     Material Defined by the Phong illumination Model:
     diffuse Diffuse color
@@ -185,15 +227,13 @@ struct Material
     float ka, kd, ks, n;
 };
 
-struct Texture {
-
-};
-
 struct SceneObject 
 {
     unsigned int id;
-    std::string type;
+    std::string type; 
     Material material;
+    Texture* texture = nullptr;
+    bool has_texture; // Overrides material if present
 };
 
 struct Sphere : SceneObject 
@@ -208,8 +248,7 @@ struct Face : SceneObject
     Vector3 vertex[3];
     bool smooth_shading;
     Vector3 vertex_normal[3];
-    bool has_texture;
-    Texture texture;
+    Point texture_coords[3];
 };
 
 struct Light
@@ -226,3 +265,5 @@ struct Intersection
     Vector3 point;
     Vector3 normal;
 };
+
+#define RayTraceResults std::map<SceneObject*, std::vector<Intersection>>
