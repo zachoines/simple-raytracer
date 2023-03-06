@@ -29,12 +29,12 @@ Color ShadeRay(SceneObject* intersected_object, Intersection intersection, Vecto
     Material material = intersected_object->material;
     Color diffuse;
 
-    if (intersected_object->has_texture) {
-        if (intersected_object->type == "sphere") {
+    if (intersected_object->has_texture) 
+    {
+        if (intersected_object->type == "sphere") 
+        {
             // Find texture coorinates
-            float v;
-            float u;
-            v = acos(intersection.normal.z()) / PI;
+            float v = acos(intersection.normal.z()) / PI;
 
             float phi = atan2(intersection.normal.y(), intersection.normal.x());
             // if (phi > 0.0) {
@@ -42,34 +42,54 @@ Color ShadeRay(SceneObject* intersected_object, Intersection intersection, Vecto
             // } else if (phi < 0) {
             //     u = (phi + 2.0*PI) / 2.0 * PI;
             // }
-            u = map(phi, -PI, PI, 0, 1.0);
+            float u = map(phi, -PI, PI, 0, 1.0);
             
             // Find texture pixel value that location
             Color new_diffuse;
             float width = static_cast<float>(intersected_object->texture->width);
             float height = static_cast<float>(intersected_object->texture->height);
-            // float width = 512;
-            // float height = 256;
             
+            // TODO: Map using bi-linear interpolation 
             int i = round((height - 1.0) * v);
             int j = round((width - 1.0) * u);
 
             Mat3D* image = intersected_object->texture->image;
-            try
-            {
-                new_diffuse.r = static_cast<float>(map(image->operator()(i, j, 0), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0, 1.0));
-                new_diffuse.g = static_cast<float>(map(image->operator()(i, j, 1), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0, 1.0));
-                new_diffuse.b = static_cast<float>(map(image->operator()(i, j, 2), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0, 1.0));
-            }
-            catch(const std::exception& e)
-            {
-                std::cerr << e.what() << '\n';
-            }
+            new_diffuse.r = static_cast<float>(map(image->operator()(i, j, 0), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0, 1.0));
+            new_diffuse.g = static_cast<float>(map(image->operator()(i, j, 1), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0, 1.0));
+            new_diffuse.b = static_cast<float>(map(image->operator()(i, j, 2), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0, 1.0));
+           
+            // Update diffuse color 
+            diffuse = new_diffuse;
+        } else if (intersected_object->type == "face") {
+            Face* face = (Face*)intersected_object;
+
+            float u = face->barycentric_cords.values[0]*face->texture_coords[0].x +
+                face->barycentric_cords.values[1]*face->texture_coords[1].x +
+                face->barycentric_cords.values[2]*face->texture_coords[2].x;
+            float v = face->barycentric_cords.values[0]*face->texture_coords[0].y +
+                face->barycentric_cords.values[1]*face->texture_coords[1].y +
+                face->barycentric_cords.values[2]*face->texture_coords[2].y;
+
+            // Find texture pixel value that location
+            Color new_diffuse;
+            float width = static_cast<float>(intersected_object->texture->width);
+            float height = static_cast<float>(intersected_object->texture->height);
+            
+            // TODO: Map using bi-linear interpolation 
+            int i = round((height - 1.0) * v);
+            int j = round((width - 1.0) * u);
+
+            Mat3D* image = intersected_object->texture->image;
+            new_diffuse.r = static_cast<float>(map(image->operator()(i, j, 0), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0, 1.0));
+            new_diffuse.g = static_cast<float>(map(image->operator()(i, j, 1), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0, 1.0));
+            new_diffuse.b = static_cast<float>(map(image->operator()(i, j, 2), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0, 1.0));
            
             // Update diffuse color 
             diffuse = new_diffuse;
         }
-    } else {
+    } 
+    else 
+    {
         diffuse = material.diffuse;
     }
     
@@ -171,8 +191,8 @@ Color ShadeRay(SceneObject* intersected_object, Intersection intersection, Vecto
         //     }
         // }
   
-        Vector3 V = (intersection.point - view_origin).norm();
-        H = ((V - L) / 2).norm();
+        Vector3 V = (view_origin - intersection.point).norm();
+        H = ((V + L) / 2).norm();
         Color diffuse_component = (diffuse * material.kd) * std::max(0.0f, N.dot(L)); // diffuse term 
         Color specular_component = (material.specular * material.ks) * pow(std::max(0.0f, N.dot(H)), material.n);
         tmp = tmp + (light.color * shadow_mask * (
@@ -196,8 +216,6 @@ RayTraceResults TraceRay(std::map<std::string, std::vector<SceneObject*>>* scene
     RayTraceResults objects_intersections;
     std::map<std::string, std::vector<SceneObject*>> so = *scene_objects;
     for ( std::pair<std::string, std::vector<SceneObject*>> x : so) {
-        // type, 
-        // std::vector<SceneObject*> objects
         if (x.first == "sphere") 
         {
             for (std::size_t k = 0; k < x.second.size(); k++) 
@@ -337,7 +355,6 @@ RayTraceResults TraceRay(std::map<std::string, std::vector<SceneObject*>>* scene
 
                         b = (d4*d5 – d2*d6)/(d1*d4 – d2*d3)
                         g = (d1*d6 – d2*d5)/(d1*d4 – d2*d3)
-
                 */
 
                 Vector3 ep;
@@ -355,19 +372,15 @@ RayTraceResults TraceRay(std::map<std::string, std::vector<SceneObject*>>* scene
                     g = (d1*d6 - d2*d5) / det;
                     a = 1.0 - ( b + g );
 
-                    /*
-                        Usefull assertions:
-                        int test = intersection.sum() + D;
-                        Vector3 intersection_point_test = face_object->vertex[0] * (1 - b - g) + face_object->vertex[1] * b + face_object->vertex[2] * g;
-                    */
-                    
+                    face_object->barycentric_cords = {a, b, g};
+
                     if (((0 < a) && (a < 1)) && ((0 < b) && ( b < 1)) && ((0 < g) && (g < 1))) {
                         Vector3 normal;
                         if (face_object->smooth_shading) {
                             normal = (
-                                (face_object->vertex_normal[0] * a) + 
-                                (face_object->vertex_normal[1] * b) + 
-                                (face_object->vertex_normal[2] * g)
+                                (face_object->vertex_normal[0] * face_object->barycentric_cords.values[0]) + 
+                                (face_object->vertex_normal[1] * face_object->barycentric_cords.values[1]) + 
+                                (face_object->vertex_normal[2] * face_object->barycentric_cords.values[2])
                             ).norm();    
                         } else {
                             normal = face_object->surface_normal;
@@ -446,9 +459,9 @@ Mat3D create_view_window_and_ray_trace(Vector3 view_origin, Vector3 view_directi
         Then for each ray, cycle through scene objects. Detect which objects the ray intersects, returning the one closest to the camera.
     */
     Mat3D matt(res_h, res_w, 3, 0);
-    for (int i = 0; i < res_w; i++) {
-        for (int j = 0; j < res_h; j++) {
-            view_window[j][i] = ul + (delta_h * static_cast<float>(i)) + (delta_v * static_cast<float>(j));
+    for (int i = 0; i < res_h; i++) {
+        for (int j = 0; j < res_w; j++) {
+            view_window[i][j] = ul + (delta_h * static_cast<float>(j)) + (delta_v * static_cast<float>(i));
             Color pixel_color = background_color;
             float min_distance = std::numeric_limits<float>::max();
 
@@ -456,7 +469,7 @@ Mat3D create_view_window_and_ray_trace(Vector3 view_origin, Vector3 view_directi
                 Form a ray pointing from view origin through a given point on the view window.
                 Then, ray-trace through scene finding intersecting objects
             */
-            Vector3 ray = (view_window[j][i] - view_origin).norm();
+            Vector3 ray = (view_window[i][j] - view_origin).norm();
             RayTraceResults objects_intersections = TraceRay(scene_objects, view_origin, ray);
 
             for ( auto [object, intersections] : objects_intersections) 
@@ -467,24 +480,22 @@ Mat3D create_view_window_and_ray_trace(Vector3 view_origin, Vector3 view_directi
                     {
                         if (intersection.distance > 0 && intersection.distance < min_distance) {
                             min_distance = intersection.distance;
-                            // Sphere* sphere_object = (Sphere*)object;
                             pixel_color = ShadeRay(object, intersection, view_origin, view_direction, scene_lights, scene_objects);
                         }
                     }    
                 } else if (object->type == "face") {
                     for (auto intersection : intersections) {
                         if (intersection.distance > 0 && intersection.distance < min_distance) {
-                            min_distance = intersection.distance;
-                            // Face* face_object = (Face*)object;                            
+                            min_distance = intersection.distance;                         
                             pixel_color = ShadeRay(object, intersection, view_origin, view_direction, scene_lights, scene_objects);
                         }
                     }
                 }
             }
-
-            matt(j, i, 0) = static_cast<int>(map(pixel_color.r, 0, 1.0, MIN_PIXEL_VALUE, MAX_PIXEL_VALUE));
-            matt(j, i, 1) = static_cast<int>(map(pixel_color.g, 0, 1.0, MIN_PIXEL_VALUE, MAX_PIXEL_VALUE));
-            matt(j, i, 2) = static_cast<int>(map(pixel_color.b, 0, 1.0, MIN_PIXEL_VALUE, MAX_PIXEL_VALUE));
+            
+            matt(i, j, 0) = static_cast<int>(map(pixel_color.r, 0, 1.0, MIN_PIXEL_VALUE, MAX_PIXEL_VALUE));
+            matt(i, j, 1) = static_cast<int>(map(pixel_color.g, 0, 1.0, MIN_PIXEL_VALUE, MAX_PIXEL_VALUE));
+            matt(i, j, 2) = static_cast<int>(map(pixel_color.b, 0, 1.0, MIN_PIXEL_VALUE, MAX_PIXEL_VALUE));
         }
     }  
 
@@ -527,6 +538,7 @@ bool check_args(std::string q, bool scene_objects = false)
     imsize width  height                       (Output image dimentions)
     bkgcolor r  g  b                           (Scene background color) 
     mtlcolor Od Od Od Os Os Os ka kd ks n      (Material color)
+    texture texture.ppm                        (Texture to apply to model)           
     light x y z w r g b                        (Scene light. Directional or point)
     sphere cx  cy  cz  r                       (Sphere defined by center and radiusm)
     vn nx ny nz                                (Vertex normal)
@@ -800,20 +812,21 @@ int main(int argc,char* argv[])
                             // Enter material/ texture information information
                             try
                             {
-                                if (triangle->has_texture) {
-                                    if (current_texture != nullptr) {
-                                        triangle->texture = current_texture;
-                                    } else {
-                                        std::cout << "ERROR: must specify either a material color (mtcolor) or texture preceeding face object. Please verify." << std::endl;
-                                        return 0;
+                                triangle->material = current_material;
+
+                                if (use_texture) {
+                                    if (!has_material || current_texture == nullptr) {
+                                        std::cout << "ERROR: Must define a 'mtlcolor' and 'texture'. Please verify." << std::endl;
+                                        return 0; 
                                     }
+                                    triangle->texture = current_texture;
+                                    triangle->has_texture = true;
                                 } else {
-                                    if (has_material) {
-                                        triangle->material = current_material;
-                                    } else {
-                                        std::cout << "ERROR: must specify either a material color (mtcolor) or texture preceeding face object. Please verify." << std::endl;
-                                        return 0;
+                                    if (!has_material) {
+                                        std::cout << "ERROR: Must define a 'mtlcolor'. Please verify." << std::endl;
+                                        return 0; 
                                     }
+                                    triangle->has_texture = false;
                                 }
                             }
                             catch(const std::exception& e)
@@ -1044,10 +1057,16 @@ int main(int argc,char* argv[])
         */
         for (int i = 0; i < height; i++) {
             for (int j = 0; j < width; j++) {
-             
-                image_stream << std::to_string(matt(i, j, 0)) << " ";
-                image_stream << std::to_string(matt(i, j, 1)) << " ";
-                image_stream << std::to_string(matt(i, j, 2)) << " " << std::endl;
+                try
+                {
+                    image_stream << std::to_string(matt(i, j, 0)) << " ";
+                    image_stream << std::to_string(matt(i, j, 1)) << " ";
+                    image_stream << std::to_string(matt(i, j, 2)) << " " << std::endl;
+                }
+                catch(const std::exception& e)
+                {
+                    std::cerr << e.what() << '\n';
+                }  
             }
         }
 

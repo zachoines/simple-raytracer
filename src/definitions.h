@@ -184,7 +184,6 @@ public:
 
         Matrix N x M X K, where N is rows and M is columns
         Index at (i, j, k), where i is rows and j is columns
-         
     */
     Mat3D(size_t m, size_t n, size_t l, int def = 0):
         N(n), M(m), L(l), m_data(n*m*l, def)
@@ -194,8 +193,8 @@ public:
         return m_data.at(index(i, j, k));
     }
 
-    int index(size_t i, size_t j, size_t k) {
-        return M * L * i + L * j + k;
+    int index( int x, int y, int z ) {
+        return (z * N * M) + (x * N) + y;
     }
 };
 
@@ -248,6 +247,7 @@ struct Face : SceneObject
     Vector3 vertex[3];
     bool smooth_shading;
     Vector3 vertex_normal[3];
+    Vector3 barycentric_cords;
     Point texture_coords[3];
 };
 
