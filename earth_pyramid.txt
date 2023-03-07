@@ -1,4 +1,4 @@
-eye 0 -2 10
+eye 0.1 -1 10
 viewdir 0 0 -2
 updir 0.0 1 0
 hfov 38

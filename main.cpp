@@ -34,15 +34,15 @@ Color ShadeRay(SceneObject* intersected_object, Intersection intersection, Vecto
         if (intersected_object->type == "sphere") 
         {
             // Find texture coorinates
-            float v = acos(intersection.normal.z()) / PI;
+            float v = acos(intersection.normal.z()) / M_PI;
 
             float phi = atan2(intersection.normal.y(), intersection.normal.x());
             // if (phi > 0.0) {
-            //     u = phi / 2.0 * PI;
+            //     u = phi / 2.0 * M_PI;
             // } else if (phi < 0) {
-            //     u = (phi + 2.0*PI) / 2.0 * PI;
+            //     u = (phi + 2.0*M_PI) / 2.0 * M_PI;
             // }
-            float u = map(phi, -PI, PI, 0, 1.0);
+            float u = map(phi, -M_PI, M_PI, 0, 1.0);
             
             // Find texture pixel value that location
             Color new_diffuse;
@@ -76,8 +76,8 @@ Color ShadeRay(SceneObject* intersected_object, Intersection intersection, Vecto
             float height = static_cast<float>(intersected_object->texture->height);
             
             // TODO: Map using bi-linear interpolation 
-            int i = round((height - 1.0) * v);
-            int j = round((width - 1.0) * u);
+            int i = round((height - 1.0f) * v);
+            int j = round((width - 1.0f) * u);
 
             Mat3D* image = intersected_object->texture->image;
             new_diffuse.r = static_cast<float>(map(image->operator()(i, j, 0), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0, 1.0));
@@ -103,7 +103,7 @@ Color ShadeRay(SceneObject* intersected_object, Intersection intersection, Vecto
         */
         if (light.w == 0) 
         {
-            L = light.direction.norm() * -1.0;
+            L = light.direction.norm() * -1.0f;
 
 
             /*
@@ -111,12 +111,12 @@ Color ShadeRay(SceneObject* intersected_object, Intersection intersection, Vecto
                 Ray-trace along the negative of light's direction for a directional light
                 For directional lights, if intersection distance is greater than 0, then a shadow will be cast.
             */
-            Vector3 ray = light.direction * -1;
+            Vector3 ray = light.direction * -1.0f;
             RayTraceResults objects_intersections = TraceRay(scene_objects, intersection.point, ray);
 
             for ( auto [object, intersections] : objects_intersections) 
             {    
-                if (object->type == "sphere")
+                if ((object->type == "sphere") || (object->type == "face"))
                 {
                     /*
                         For spheres, we do not consider self intersections
@@ -128,7 +128,7 @@ Color ShadeRay(SceneObject* intersected_object, Intersection intersection, Vecto
                     
                     for (auto intersection : intersections) 
                     {
-                        if (intersection.distance > 0.0) 
+                        if (intersection.distance > 0.0f) 
                         {
                             shadow_mask = { 0.0, 0.0, 0.0 };
                             obstructed = true;
@@ -169,7 +169,7 @@ Color ShadeRay(SceneObject* intersected_object, Intersection intersection, Vecto
                     */ 
                     for (auto intersection : intersections) 
                     {
-                        if (intersection.distance > 0.0 && intersection.distance < distance_to_light) 
+                        if (intersection.distance > 0.0f && intersection.distance < distance_to_light) 
                         {
                             shadow_mask = { 0.0, 0.0, 0.0 };
                             obstructed = true;
@@ -191,10 +191,10 @@ Color ShadeRay(SceneObject* intersected_object, Intersection intersection, Vecto
         //     }
         // }
   
-        Vector3 V = (view_origin - intersection.point).norm();
-        H = ((V + L) / 2).norm();
+        Vector3 V = (intersection.point - view_origin).norm();
+        H = ((L - V) / 2.0f).norm();
         Color diffuse_component = (diffuse * material.kd) * std::max(0.0f, N.dot(L)); // diffuse term 
-        Color specular_component = (material.specular * material.ks) * pow(std::max(0.0f, N.dot(H)), material.n);
+        Color specular_component = (material.specular * material.ks) * powf(std::max(0.0f, N.dot(H)), material.n);
         tmp = tmp + (light.color * shadow_mask * (
             diffuse_component + 
             specular_component
@@ -296,7 +296,7 @@ RayTraceResults TraceRay(std::map<std::string, std::vector<SceneObject*>>* scene
                 */
                
                 float dem = normal.dot(ray); 
-                if (dem == 0.0) {
+                if (dem == 0.0f) {
                     continue; // We have missed the plane containing the triangle
                 }
                 
@@ -358,29 +358,28 @@ RayTraceResults TraceRay(std::map<std::string, std::vector<SceneObject*>>* scene
                 */
 
                 Vector3 ep;
-                float d1, d2, d3, d4, d5, d6, a, b, g;
+                float d11, d22, d12, d1p, d2p, a, b, g;
                 ep = intersection - face_object->vertex[0];
-                d1 = e1.dot(e1);
-                d2 = e1.dot(e2);
-                d3 = d2;
-                d4 = e2.dot(e2);
-                d5 = e1.dot(ep);
-                d6 = e2.dot(ep);
-                float det = (d1*d4 - d2*d3);
-                if (det != 0) {
-                    b = (d4*d5 - d2*d6) / det;
-                    g = (d1*d6 - d2*d5) / det;
-                    a = 1.0 - ( b + g );
+                d11 = e1.dot(e1);
+                d12 = e1.dot(e2);
+                d22 = e2.dot(e2);
+                d1p = e1.dot(ep);
+                d2p = e2.dot(ep);
+                float det = (d11*d22 - d12*d12);
+                if (det != 0.0f) {
+                    b = (d22*d1p - d12*d2p) / det;
+                    g = (d11*d2p - d12*d1p) / det;
+                    a = 1.0f - ( b + g );
 
                     face_object->barycentric_cords = {a, b, g};
 
-                    if (((0 < a) && (a < 1)) && ((0 < b) && ( b < 1)) && ((0 < g) && (g < 1))) {
+                    if (((0.0f < a) && (a < 1.0f)) && ((0.0f < b) && ( b < 1.0f)) && ((0.0f < g) && (g < 1.0f))) {
                         Vector3 normal;
                         if (face_object->smooth_shading) {
                             normal = (
-                                (face_object->vertex_normal[0] * face_object->barycentric_cords.values[0]) + 
-                                (face_object->vertex_normal[1] * face_object->barycentric_cords.values[1]) + 
-                                (face_object->vertex_normal[2] * face_object->barycentric_cords.values[2])
+                                (face_object->vertex_normal[0].norm() * face_object->barycentric_cords.values[0]) + 
+                                (face_object->vertex_normal[1].norm() * face_object->barycentric_cords.values[1]) + 
+                                (face_object->vertex_normal[2].norm() * face_object->barycentric_cords.values[2])
                             ).norm();    
                         } else {
                             normal = face_object->surface_normal;
@@ -431,16 +430,16 @@ Mat3D create_view_window_and_ray_trace(Vector3 view_origin, Vector3 view_directi
         Find the width and the height of the viewing window in world coordinate units
     */
     float aspect_ratio = res_w / res_h;
-    float w = 2.0*d* tan((0.5*fov_h) * PI / 180.0);
+    float w = 2.0f*d* tan((0.5*fov_h) * M_PI / 180.0f);
     float h = w / aspect_ratio;
 
     /* 
         Define the (x, y, z) locations of each corner of the viewing window
     */
     Vector3 n = view_direction;
-    Vector3 ul = view_origin + n*d - u*(w/2.0) + v*(h/2.0);
-    Vector3 ur = view_origin + n*d + u*(w/2.0) + v*(h/2.0);
-    Vector3 ll = view_origin + n*d - u*(w/2.0) - v*(h/2.0);
+    Vector3 ul = view_origin + n*d - u*(w/2.0f) + v*(h/2.0f);
+    Vector3 ur = view_origin + n*d + u*(w/2.0f) + v*(h/2.0f);
+    Vector3 ll = view_origin + n*d - u*(w/2.0f) - v*(h/2.0f);
 
     /*
         Now we define a mappings between pixels in the image to points in the viewing window
@@ -450,8 +449,8 @@ Mat3D create_view_window_and_ray_trace(Vector3 view_origin, Vector3 view_directi
     Vector3 default_vector3;
     std::vector<Vector3> cols(res_w, default_vector3); 
     std::vector<std::vector<Vector3>> view_window(res_h, cols);
-    Vector3 delta_h = (ur - ul) / (res_w - 1.0); 
-    Vector3 delta_v = (ll - ul) / (res_h - 1.0);
+    Vector3 delta_h = (ur - ul) / (res_w - 1.0f); 
+    Vector3 delta_v = (ll - ul) / (res_h - 1.0f);
 
 
     /*
@@ -478,14 +477,14 @@ Mat3D create_view_window_and_ray_trace(Vector3 view_origin, Vector3 view_directi
                 {
                     for (auto intersection : intersections) 
                     {
-                        if (intersection.distance > 0 && intersection.distance < min_distance) {
+                        if (intersection.distance > 0.0f && intersection.distance < min_distance) {
                             min_distance = intersection.distance;
                             pixel_color = ShadeRay(object, intersection, view_origin, view_direction, scene_lights, scene_objects);
                         }
                     }    
                 } else if (object->type == "face") {
                     for (auto intersection : intersections) {
-                        if (intersection.distance > 0 && intersection.distance < min_distance) {
+                        if (intersection.distance > 0.0f && intersection.distance < min_distance) {
                             min_distance = intersection.distance;                         
                             pixel_color = ShadeRay(object, intersection, view_origin, view_direction, scene_lights, scene_objects);
                         }
@@ -1027,7 +1026,7 @@ int main(int argc,char* argv[])
         /*
             Using previous commands, build scene viewing window and raytrace.
         */
-        Mat3D matt = create_view_window_and_ray_trace(view_origin, view_direction.norm(), view_up, fov_h, height, width, &scene_objects, scene_lights, background_color); 
+        Mat3D matt = create_view_window_and_ray_trace(view_origin, view_direction.norm(), view_up.norm(), fov_h, height, width, &scene_objects, scene_lights, background_color); 
 
 
         /*
