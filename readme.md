@@ -2,10 +2,14 @@
 This program is a raytracing based renderer that generates images using a properties file as input. This is a work in progress. 
 Currently supported features are: 
 - Hard shadows
-- Phong Illumination
+- Point and directional lights
+- Phong Illumination Materials 
 - Spheres
+- triangles (faces)
+- textures
 
-![Example](Examples/demo_image.png)
+
+![Example](Examples/earth.png)
 
 # Compile program
 First navigate to directory with main.cpp. Then run these commands:  
