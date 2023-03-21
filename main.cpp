@@ -7,11 +7,15 @@
 #include "src/utility.h"
 
 
+std::map<std::string, std::vector<SceneObjectInfo*>> scene_objects;
+std::map<int, Face*> faces;
+std::map<int, Sphere*> spheres;
+
 /*
     Function hoisting
 */
-Color ShadeRay(SceneObject* intersected_object, Intersection intersection, Vector3 view_origin, Vector3 view_direction, Material material, Vector3 world_location, std::vector<Light> scene_lights, std::map<std::string, std::vector<SceneObject*>>* scene_objects) ;
-RayTraceResults TraceRay(std::map<std::string, std::vector<SceneObject*>>* scene_objects, Vector3 view_origin, Vector3 ray);
+Color ShadeRay(SceneObjectInfo* intersected_object_info, Intersection intersection, Vector3 view_origin, Vector3 view_direction, Material material, Vector3 world_location, std::vector<Light> scene_lights);
+std::vector<ObjectIntersections> TraceRay(Vector3 view_origin, Vector3 ray);
 
 
 /*
@@ -20,70 +24,103 @@ RayTraceResults TraceRay(std::map<std::string, std::vector<SceneObject*>>* scene
     surface_normal The normal vector of the object where ray hits
     scene_lights All the lights currently in the scene
 */
-Color ShadeRay(SceneObject* intersected_object, Intersection intersection, Vector3 view_origin, Vector3 view_direction, std::vector<Light> scene_lights, std::map<std::string, std::vector<SceneObject*>>* scene_objects) 
+Color ShadeRay(SceneObjectInfo* intersected_object_info, Intersection intersection, Vector3 view_origin, Vector3 view_direction, std::vector<Light> scene_lights) 
 {
     Vector3 N = intersection.normal;
     Color tmp = { 0.0, 0.0, 0.0 };
     Color shadow_mask = { 1.0, 1.0, 1.0 };
     std::vector<bool> obstructions;
-    Material material = intersected_object->material;
+    
+    Material material = intersected_object_info->material;
     Color diffuse;
 
-    if (intersected_object->has_texture) 
+    if (intersected_object_info->has_texture) 
     {
-        if (intersected_object->type == "sphere") 
+        if (intersected_object_info->type == "sphere") 
         {
             // Find texture coorinates
             float v = acos(intersection.normal.z()) / M_PI;
-
             float phi = atan2(intersection.normal.y(), intersection.normal.x());
+            float u;
+            u = map(phi, -M_PI, M_PI, 0.0, 1.0);
             // if (phi > 0.0) {
             //     u = phi / 2.0 * M_PI;
-            // } else if (phi < 0) {
-            //     u = (phi + 2.0*M_PI) / 2.0 * M_PI;
+            // } else {
+            //     u = (phi + (2.0*M_PI)) / (2.0 * M_PI);
             // }
-            float u = map(phi, -M_PI, M_PI, 0, 1.0);
             
             // Find texture pixel value that location
             Color new_diffuse;
-            float width = static_cast<float>(intersected_object->texture->width);
-            float height = static_cast<float>(intersected_object->texture->height);
-            
-            // TODO: Map using bi-linear interpolation 
-            int i = round((height - 1.0) * v);
-            int j = round((width - 1.0) * u);
+            float width = static_cast<float>(intersected_object_info->texture->width);
+            float height = static_cast<float>(intersected_object_info->texture->height);
+            v = std::clamp<float>(v, 0.0, 1.0);
+            u = std::clamp<float>(u, 0.0, 1.0);
 
-            Mat3D* image = intersected_object->texture->image;
-            new_diffuse.r = static_cast<float>(map(image->operator()(i, j, 0), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0, 1.0));
-            new_diffuse.g = static_cast<float>(map(image->operator()(i, j, 1), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0, 1.0));
-            new_diffuse.b = static_cast<float>(map(image->operator()(i, j, 2), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0, 1.0));
+            // TODO: Map using bi-linear interpolation 
+            int i = static_cast<int>(std::clamp<float>(round((height - 1.0) * v), 0.0, height - 1.0));
+            int j = static_cast<int>(std::clamp<float>(round((width - 1.0) * u), 0.0, width - 1.0));
+
+            Mat3D* image = intersected_object_info->texture->image;
+            new_diffuse.r = static_cast<float>(map(image->get(j, i, 0), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0, 1.0));
+            new_diffuse.g = static_cast<float>(map(image->get(j, i, 1), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0, 1.0));
+            new_diffuse.b = static_cast<float>(map(image->get(j, i, 2), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0, 1.0));
            
             // Update diffuse color 
             diffuse = new_diffuse;
-        } else if (intersected_object->type == "face") {
-            Face* face = (Face*)intersected_object;
+        } else if (intersected_object_info->type == "face") {
+            Face* face = faces[intersected_object_info->id];
+  
+            float u = 
+                (face->barycentric_cords.values[0]*std::clamp<float>(face->texture_coords[0].x, 0.0, 1.0)) +
+                (face->barycentric_cords.values[1]*std::clamp<float>(face->texture_coords[1].x, 0.0, 1.0)) +
+                (face->barycentric_cords.values[2]*std::clamp<float>(face->texture_coords[2].x, 0.0, 1.0));
+            float v = 
+                (face->barycentric_cords.values[0]*std::clamp<float>(face->texture_coords[0].y, 0.0, 1.0)) +
+                (face->barycentric_cords.values[1]*std::clamp<float>(face->texture_coords[1].y, 0.0, 1.0)) +
+                (face->barycentric_cords.values[2]*std::clamp<float>(face->texture_coords[2].y, 0.0, 1.0));
 
-            float u = face->barycentric_cords.values[0]*face->texture_coords[0].x +
-                face->barycentric_cords.values[1]*face->texture_coords[1].x +
-                face->barycentric_cords.values[2]*face->texture_coords[2].x;
-            float v = face->barycentric_cords.values[0]*face->texture_coords[0].y +
-                face->barycentric_cords.values[1]*face->texture_coords[1].y +
-                face->barycentric_cords.values[2]*face->texture_coords[2].y;
 
+            v = std::clamp<float>(v, 0.0, 1.0);
+            u = std::clamp<float>(u, 0.0, 1.0);
+        
             // Find texture pixel value that location
             Color new_diffuse;
-            float width = static_cast<float>(intersected_object->texture->width);
-            float height = static_cast<float>(intersected_object->texture->height);
+            float width = static_cast<float>(intersected_object_info->texture->width);
+            float height = static_cast<float>(intersected_object_info->texture->height);
             
             // TODO: Map using bi-linear interpolation 
-            int i = round((height - 1.0f) * v);
-            int j = round((width - 1.0f) * u);
+            int i = static_cast<int>(std::clamp<float>(round((width - 1.0f) * u), 0.0, width - 1.0));
+            int j = static_cast<int>(std::clamp<float>(round((height - 1.0f) * v), 0.0, height - 1.0));
 
-            Mat3D* image = intersected_object->texture->image;
-            new_diffuse.r = static_cast<float>(map(image->operator()(i, j, 0), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0, 1.0));
-            new_diffuse.g = static_cast<float>(map(image->operator()(i, j, 1), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0, 1.0));
-            new_diffuse.b = static_cast<float>(map(image->operator()(i, j, 2), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0, 1.0));
-           
+            Mat3D* image = intersected_object_info->texture->image;
+            new_diffuse.r = static_cast<float>(
+                map(
+                    image->get(i, j, 0), 
+                    MIN_PIXEL_VALUE, 
+                    MAX_PIXEL_VALUE, 
+                    0, 
+                    1.0
+                )
+            );
+            new_diffuse.g = static_cast<float>(
+                map(
+                    image->get(i, j, 1), 
+                    MIN_PIXEL_VALUE, 
+                    MAX_PIXEL_VALUE, 
+                    0, 
+                    1.0
+                )
+            );
+            new_diffuse.b = static_cast<float>(
+                map(
+                    image->get(i, j, 2), 
+                    MIN_PIXEL_VALUE, 
+                    MAX_PIXEL_VALUE, 
+                    0, 
+                    1.0
+                )
+            );
+
             // Update diffuse color 
             diffuse = new_diffuse;
         }
@@ -112,7 +149,7 @@ Color ShadeRay(SceneObject* intersected_object, Intersection intersection, Vecto
                 For directional lights, if intersection distance is greater than 0, then a shadow will be cast.
             */
             Vector3 ray = light.direction * -1.0f;
-            RayTraceResults objects_intersections = TraceRay(scene_objects, intersection.point, ray);
+            std::vector<ObjectIntersections> objects_intersections = TraceRay(intersection.point, ray);
 
             for ( auto [object, intersections] : objects_intersections) 
             {    
@@ -121,7 +158,7 @@ Color ShadeRay(SceneObject* intersected_object, Intersection intersection, Vecto
                     /*
                         For spheres, we do not consider self intersections
                     */
-                    if (object->id == intersected_object->id) 
+                    if (object->id == intersected_object_info->id) 
                     {
                         continue;
                     }
@@ -151,7 +188,7 @@ Color ShadeRay(SceneObject* intersected_object, Intersection intersection, Vecto
                 Determine if shadow exists:
                 Ray-trace from point of intersection to light source, detecting other scene objects are occluding light.
             */
-            RayTraceResults objects_intersections = TraceRay(scene_objects, intersection.point, L);
+            std::vector<ObjectIntersections> objects_intersections = TraceRay(intersection.point, L);
           
             for ( auto [object, intersections] : objects_intersections) 
             {    
@@ -160,7 +197,7 @@ Color ShadeRay(SceneObject* intersected_object, Intersection intersection, Vecto
                     /*
                         For spheres, we do not consider self intersections
                     */
-                    if (object->id == intersected_object->id) {
+                    if (object->id == intersected_object_info->id) {
                         continue;
                     }
                     
@@ -180,16 +217,6 @@ Color ShadeRay(SceneObject* intersected_object, Intersection intersection, Vecto
 
             obstructions.push_back(obstructed);
         }
-        
-        /*
-            For multi-light setups.
-            Ensures an intersection point is fully in shadow or if another light still shines on it.
-        */
-        // for (bool o : obstructions ) {
-        //     if (o == false) {
-        //         shadow_mask = { 1.0, 1.0, 1.0 };
-        //     }
-        // }
   
         Vector3 V = (intersection.point - view_origin).norm();
         H = ((L - V) / 2.0f).norm();
@@ -211,18 +238,16 @@ Color ShadeRay(SceneObject* intersected_object, Intersection intersection, Vecto
 /*
     Returns objectTraceRay and their intersection points with provided ray
 */
-RayTraceResults TraceRay(std::map<std::string, std::vector<SceneObject*>>* scene_objects, Vector3 view_origin, Vector3 ray) 
+std::vector<ObjectIntersections> TraceRay(Vector3 view_origin, Vector3 ray) 
 {
-    RayTraceResults objects_intersections;
-    std::map<std::string, std::vector<SceneObject*>> so = *scene_objects;
-    for ( std::pair<std::string, std::vector<SceneObject*>> x : so) {
-        if (x.first == "sphere") 
+    std::vector<ObjectIntersections> ray_trace_results;
+    for ( auto& [type, object_infos] : scene_objects) {
+        if (type == "sphere") 
         {
-            for (std::size_t k = 0; k < x.second.size(); k++) 
+            for (auto & object_info : object_infos) 
             {
                 std::vector<Intersection> intersections;
-                SceneObject* object = x.second.at(k);
-                Sphere* sphere_object = (Sphere*)object;
+                Sphere* sphere_object = spheres[object_info->id];
                 Vector3 dir = (view_origin - sphere_object->center);
 
                 /*
@@ -230,7 +255,7 @@ RayTraceResults TraceRay(std::map<std::string, std::vector<SceneObject*>>* scene
                     (x–sphere.x)^2 + (y–sphere.y)^2 + (z–sphere.z)^2 == sum[(intersection - sphere_center)^2] == sphere.r^2
                     intersection = view_origin + (distance * ray)
                 */
-                float A = 1.0; // ray.square().sum();
+                float A = 1.0;
                 float B = 2.0 * (ray * dir).sum();
                 float C = dir.square().sum() - pow(sphere_object->radius, 2.0);
 
@@ -268,17 +293,16 @@ RayTraceResults TraceRay(std::map<std::string, std::vector<SceneObject*>>* scene
                     });
                 }
 
-                objects_intersections[object] = intersections;
-
-                /* Usefull assertion */
-                // sphere_object->radius == sqrtf(((sphere_intersection - sphere_object->center).square().sum()));     
+                ObjectIntersections object_intersections;
+                object_intersections.object_info = object_info;
+                object_intersections.intersections = intersections;
+                ray_trace_results.push_back(object_intersections);   
             }
-        } else if (x.first == "face") {
-            for (std::size_t k = 0; k < x.second.size(); k++) 
+        } else if (type == "face") {
+            for (auto& object_info : object_infos) 
             {
                 std::vector<Intersection> intersections; // Will only ever be one intersection per triangle (But other objects may differ)
-                SceneObject* object = x.second.at(k);
-                Face* face_object = (Face*)object;
+                Face* face_object = faces[object_info->id];
                 Vector3 e1 = face_object->vertex[1] - face_object->vertex[0];
                 Vector3 e2 = face_object->vertex[2] - face_object->vertex[0];
                 Vector3 normal = face_object->surface_normal;
@@ -371,7 +395,11 @@ RayTraceResults TraceRay(std::map<std::string, std::vector<SceneObject*>>* scene
                     g = (d11*d2p - d12*d1p) / det;
                     a = 1.0f - ( b + g );
 
-                    face_object->barycentric_cords = {a, b, g};
+                    Vector3 barycentric_cords;
+                    barycentric_cords.values[0] = a;
+                    barycentric_cords.values[1] = b;
+                    barycentric_cords.values[2] = g;
+                    face_object->barycentric_cords = barycentric_cords;
 
                     if (((0.0f < a) && (a < 1.0f)) && ((0.0f < b) && ( b < 1.0f)) && ((0.0f < g) && (g < 1.0f))) {
                         Vector3 normal;
@@ -384,15 +412,22 @@ RayTraceResults TraceRay(std::map<std::string, std::vector<SceneObject*>>* scene
                         } else {
                             normal = face_object->surface_normal;
                         }
-                        intersections.push_back({distance, intersection, normal});
-                        objects_intersections[object] = intersections;
+                        Intersection info;
+                        info.distance = distance;
+                        info.point = intersection;
+                        info.normal = normal;
+
+                        ObjectIntersections object_intersections;
+                        object_intersections.object_info = object_info;
+                        object_intersections.intersections = { info };
+                        ray_trace_results.push_back(object_intersections);   
                     }
                 }
             }
         }
     }
    
-    return objects_intersections;
+    return ray_trace_results;
 }
 
 /*
@@ -409,7 +444,7 @@ RayTraceResults TraceRay(std::map<std::string, std::vector<SceneObject*>>* scene
     v x1 y1 z1
     f v1 v2 v3
 */
-Mat3D create_view_window_and_ray_trace(Vector3 view_origin, Vector3 view_direction, Vector3 view_up, float fov_h, float res_h, float res_w, std::map<std::string, std::vector<SceneObject*>>* scene_objects, std::vector<Light> scene_lights, Color background_color) 
+Mat3D create_view_window_and_ray_trace(Vector3 view_origin, Vector3 view_direction, Vector3 view_up, float fov_h, float res_h, float res_w, std::vector<Light> scene_lights, Color background_color) 
 {
 
     /* 
@@ -422,9 +457,8 @@ Mat3D create_view_window_and_ray_trace(Vector3 view_origin, Vector3 view_directi
         Define the virtical edge of the view window. 
         Can be also defined by projecting the camera "view up" vector onto the viewing window plane.
         However, its more computationally efficient to calculate "u" first via above method, and then "v".
-        TODO:: Check if the V needs to be normalized. In theory, view directin and u are already orthogonal, so v should be already unit length.
     */
-    Vector3 v = u.cross(view_direction); //.norm();
+    Vector3 v = u.cross(view_direction);
     
     /*
         Find the width and the height of the viewing window in world coordinate units
@@ -469,27 +503,23 @@ Mat3D create_view_window_and_ray_trace(Vector3 view_origin, Vector3 view_directi
                 Then, ray-trace through scene finding intersecting objects
             */
             Vector3 ray = (view_window[i][j] - view_origin).norm();
-            RayTraceResults objects_intersections = TraceRay(scene_objects, view_origin, ray);
-
-            for ( auto [object, intersections] : objects_intersections) 
+            std::vector<ObjectIntersections> ray_trace_results = TraceRay(view_origin, ray);
+            Intersection min_intersection;
+            SceneObjectInfo* intersected_object = nullptr; 
+            for (auto & object_intersections : ray_trace_results) 
             {    
-                if (object->type == "sphere") 
-                {
-                    for (auto intersection : intersections) 
-                    {
-                        if (intersection.distance > 0.0f && intersection.distance < min_distance) {
-                            min_distance = intersection.distance;
-                            pixel_color = ShadeRay(object, intersection, view_origin, view_direction, scene_lights, scene_objects);
-                        }
-                    }    
-                } else if (object->type == "face") {
-                    for (auto intersection : intersections) {
-                        if (intersection.distance > 0.0f && intersection.distance < min_distance) {
-                            min_distance = intersection.distance;                         
-                            pixel_color = ShadeRay(object, intersection, view_origin, view_direction, scene_lights, scene_objects);
-                        }
+                for (auto & intersection : object_intersections.intersections) 
+                {   
+                    if (intersection.distance > 0.0f && intersection.distance < min_distance) {
+                        min_distance = intersection.distance;
+                        intersected_object = object_intersections.object_info;
+                        min_intersection = intersection;
                     }
                 }
+            }
+            
+            if (intersected_object != nullptr) {
+                pixel_color = ShadeRay(intersected_object, min_intersection, view_origin, view_direction, scene_lights);    
             }
             
             matt(i, j, 0) = static_cast<int>(map(pixel_color.r, 0, 1.0, MIN_PIXEL_VALUE, MAX_PIXEL_VALUE));
@@ -553,7 +583,6 @@ int main(int argc,char* argv[])
     std::vector<Texture*> textures;
     std::vector<Light> scene_lights;
     std::map<std::string, std::vector<std::string>> commands;
-    std::map<std::string, std::vector<SceneObject*>> scene_objects;
     std::map<std::string, Point> texture_coords;
     std::map<unsigned int, Vector3> vertices;
     std::map<unsigned int, Vector3> normals;
@@ -647,13 +676,14 @@ int main(int argc,char* argv[])
                     obj_id_counter++;
                     if (image_properties[0] == "sphere") 
                     {
-                        Sphere* new_obj = new Sphere();
+                        Sphere* sphere_object = new Sphere();
+                        SceneObjectInfo* object_info = new SceneObjectInfo();
                         try
                         {
-                            new_obj->id = obj_id_counter;
-                            new_obj->type = "sphere";
-                            new_obj->radius = std::stof(image_properties[4]);
-                            new_obj->center = {
+                            object_info->id = obj_id_counter;
+                            object_info->type = "sphere";
+                            sphere_object->radius = std::stof(image_properties[4]);
+                            sphere_object->center = {
                                 {std::stof(image_properties[1]), std::stof(image_properties[2]), std::stof(image_properties[3])}
                             };
                         }
@@ -666,21 +696,21 @@ int main(int argc,char* argv[])
 
                         try
                         {
-                            new_obj->material = current_material;
+                            object_info->material = current_material;
 
                             if (use_texture) {
                                 if (!has_material || current_texture == nullptr) {
                                     std::cout << "ERROR: Must define a 'mtlcolor' and 'texture'. Please verify." << std::endl;
                                     return 0; 
                                 }
-                                new_obj->texture = current_texture;
-                                new_obj->has_texture = true;
+                                object_info->texture = current_texture;
+                                object_info->has_texture = true;
                             } else {
                                 if (!has_material) {
                                     std::cout << "ERROR: Must define a 'mtlcolor'. Please verify." << std::endl;
                                     return 0; 
                                 }
-                                new_obj->has_texture = false;
+                                object_info->has_texture = false;
                             }    
                         }
                         catch(const std::exception& e)
@@ -689,10 +719,12 @@ int main(int argc,char* argv[])
                             std::cout << "ERROR: Invalid args for 'mtlcolor' command. Please verify." << std::endl;
                             return 0;
                         }
-
-                        scene_objects[image_properties[0]].push_back(
-                            (SceneObject*) new_obj
+                        
+                        sphere_object->object_info = object_info;
+                        scene_objects["sphere"].push_back(
+                            object_info
                         );
+                        spheres[object_info->id] = sphere_object;
                     } 
                     else if (image_properties[0] == "light") 
                     {
@@ -731,9 +763,12 @@ int main(int argc,char* argv[])
                         try
                         {
                             vertex_counter++;
-                            vertices[vertex_counter] = {
-                                {std::stof(image_properties[1]), std::stof(image_properties[2]), std::stof(image_properties[3])}
-                            };
+                            Vector3 vertex;
+                            vertex.values[0] = std::stof(image_properties[1]); 
+                            vertex.values[1] = std::stof(image_properties[2]);
+                            vertex.values[2] = std::stof(image_properties[3]);
+                            vertices[vertex_counter] = vertex;
+                            
                         }
                         catch(const std::exception& e)
                         {
@@ -748,9 +783,11 @@ int main(int argc,char* argv[])
                         try
                         {
                             normal_counter++;
-                            normals[normal_counter] = {
-                                {std::stof(image_properties[1]), std::stof(image_properties[2]), std::stof(image_properties[3])}
-                            };
+                            Vector3 vertex_normal;
+                            vertex_normal.values[0] = std::stof(image_properties[1]); 
+                            vertex_normal.values[1] = std::stof(image_properties[2]);
+                            vertex_normal.values[2] = std::stof(image_properties[3]);
+                            normals[normal_counter] = vertex_normal;
                         }
                         catch(const std::exception& e)
                         {
@@ -763,9 +800,10 @@ int main(int argc,char* argv[])
                             Extract Face. Validate Correctness.
                         */
                         Face* triangle = new Face();
+                        SceneObjectInfo* object_info = new SceneObjectInfo();
                         obj_id_counter++;
-                        triangle->type = "face";
-                        triangle->id = obj_id_counter; 
+                        object_info->type = "face";
+                        object_info->id = obj_id_counter; 
                         
                         try
                         {
@@ -780,27 +818,27 @@ int main(int argc,char* argv[])
                                     triangle->vertex_normal[i - 1] = normals[n];
                                     triangle->smooth_shading = true;
                                     triangle->texture_coords[i - 1] = texture_coords[std::to_string(t)];
-                                    triangle->has_texture = true;
+                                    object_info->has_texture = true;
 
                                 } else if (sscanf(image_properties[i].c_str(), "%d//%d", &v, &n ) == 2) {
                                     //success reading a face in v//n format. For a smooth shaded, untextured triangle.
                                     triangle->vertex[i - 1] = vertices[v];
                                     triangle->vertex_normal[i - 1] = normals[n];
                                     triangle->smooth_shading = true;
-                                    triangle->has_texture = false;
+                                    object_info->has_texture = false;
 
                                 } else if (sscanf(image_properties[i].c_str(), "%d/%d", &v, &t) == 2) {
                                     // success reading a face in v/t format. For a non-smooth shaded, textured triangle.
                                     triangle->vertex[i - 1] = vertices[v];
                                     triangle->smooth_shading = false;
                                     triangle->texture_coords[i - 1] = texture_coords[std::to_string(t)];
-                                    triangle->has_texture = true;
+                                    object_info->has_texture = true;
                                 
                                 } else if (sscanf(image_properties[i].c_str(), "%d", &v) == 1) {
                                     // success reading a face in v format; proceed accordingly
                                     triangle->vertex[i - 1] = vertices[v];
                                     triangle->smooth_shading = false;
-                                    triangle->has_texture = false;                               
+                                    object_info->has_texture = false;                               
                                 } else {
                                     // error reading face data
                                     std::cout << "ERROR: Invalid args for 'f' object. Please verify." << std::endl;
@@ -811,21 +849,21 @@ int main(int argc,char* argv[])
                             // Enter material/ texture information information
                             try
                             {
-                                triangle->material = current_material;
+                                object_info->material = current_material;
 
                                 if (use_texture) {
                                     if (!has_material || current_texture == nullptr) {
                                         std::cout << "ERROR: Must define a 'mtlcolor' and 'texture'. Please verify." << std::endl;
                                         return 0; 
                                     }
-                                    triangle->texture = current_texture;
-                                    triangle->has_texture = true;
+                                    object_info->texture = current_texture;
+                                    object_info->has_texture = true;
                                 } else {
                                     if (!has_material) {
                                         std::cout << "ERROR: Must define a 'mtlcolor'. Please verify." << std::endl;
                                         return 0; 
                                     }
-                                    triangle->has_texture = false;
+                                    object_info->has_texture = false;
                                 }
                             }
                             catch(const std::exception& e)
@@ -839,9 +877,10 @@ int main(int argc,char* argv[])
                             Vector3 e1 = triangle->vertex[1] - triangle->vertex[0];
                             Vector3 e2 = triangle->vertex[2] - triangle->vertex[0];
                             triangle->surface_normal = e1.cross(e2).norm();
-                            
+                            triangle->object_info = object_info;
+                            faces[object_info->id] = triangle; 
                             scene_objects["face"].push_back(
-                                (SceneObject*) triangle
+                                object_info
                             );
                         }
                         catch(const std::exception& e)
@@ -856,11 +895,12 @@ int main(int argc,char* argv[])
                         */
                         try
                         {
+                            Point coord;
+                            coord.x = std::stof(image_properties[1]); // x coord
+                            coord.y = std::stof(image_properties[2]); // y coord
+
                             texture_coord_counter++;
-                            texture_coords[std::to_string(texture_coord_counter)] = {
-                                std::stof(image_properties[1]), // x coord
-                                std::stof(image_properties[2])  // y coord
-                            };
+                            texture_coords[std::to_string(texture_coord_counter)] = coord;
                         }
                         catch(const std::exception& e)
                         {
@@ -1026,7 +1066,7 @@ int main(int argc,char* argv[])
         /*
             Using previous commands, build scene viewing window and raytrace.
         */
-        Mat3D matt = create_view_window_and_ray_trace(view_origin, view_direction.norm(), view_up.norm(), fov_h, height, width, &scene_objects, scene_lights, background_color); 
+        Mat3D matt = create_view_window_and_ray_trace(view_origin, view_direction.norm(), view_up.norm(), fov_h, height, width, scene_lights, background_color); 
 
 
         /*

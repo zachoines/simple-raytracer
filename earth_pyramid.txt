@@ -8,9 +8,9 @@ light 0 0 -1 0 0.6 0 0
 light 0 0 -1 0 1 1 0
 mtlcolor 1 0 1 1 .14 1 0.1 0.4 0.4 20
 
-texture earthtexture.ppm
+texture textures/earthtexture.ppm
 sphere 0.2 -2 -2 2
-texture pyramid_texture.ppm
+texture textures/pyramid_texture.ppm
 
 v 1 0 -1
 v 0 1.5 0

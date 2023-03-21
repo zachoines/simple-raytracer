@@ -103,17 +103,18 @@ Texture* read_texture(std::string path, Texture* texture) {
         }
     }
 
-    texture = new Texture(height, width);
+    texture = new Texture(width, height);
 
     // Now write to image
     unsigned int token_index = 0;
     int i, j, k;
     try
     {
-        for (i = 0; i < height; i++ ) {
-            for (j = 0; j < width; j++ ) {
+        
+        for (j = 0; j < height; j++ ) {
+            for (i = 0; i < width; i++ ) {
                 for (k = 0; k < 3; k++ ) {
-                    texture->image->operator()(i, j, k) = std::stoi(tokens[token_index]);
+                    texture->image->set(i, j, k, std::stoi(tokens[token_index]));
                     token_index += 1;
                 }
             }

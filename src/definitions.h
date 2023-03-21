@@ -174,7 +174,7 @@ struct Color
 class Mat3D {
 private:
     size_t N, M, L;
-    std::vector<int> m_data;
+    std::vector<std::vector<std::vector<size_t>>> m_data;
 
 public:
     /*
@@ -186,25 +186,29 @@ public:
         Index at (i, j, k), where i is rows and j is columns
     */
     Mat3D(size_t m, size_t n, size_t l, int def = 0):
-        N(n), M(m), L(l), m_data(n*m*l, def)
+        N(n), M(m), L(l), m_data(m, std::vector<std::vector<size_t>>(n, std::vector<size_t>(l,def)))
     {}
     
-    int& operator()(size_t i, size_t j, size_t k) {
-        return m_data.at(index(i, j, k));
+    size_t& operator()(size_t i, size_t j, size_t k) {
+        return m_data[i][j][k];
     }
 
-    int index( int x, int y, int z ) {
-        return (z * N * M) + (x * N) + y;
+    void set(size_t i, size_t j, size_t k, size_t value) {
+        m_data[i][j][k] = value;
+    }
+
+    size_t get(size_t i, size_t j, size_t k) {
+        return m_data[i][j][k];
     }
 };
 
 struct Texture {
     public:
     float height, width;
-    Texture(float height, float width) {
+    Texture(float width, float height) {
         this->width = width;
         this->height = height;
-        image = new Mat3D(height, width, 3);
+        image = new Mat3D(width, height, 3);
     }
     Mat3D* image;
 };
@@ -226,7 +230,7 @@ struct Material
     float ka, kd, ks, n;
 };
 
-struct SceneObject 
+struct SceneObjectInfo 
 {
     unsigned int id;
     std::string type; 
@@ -235,13 +239,14 @@ struct SceneObject
     bool has_texture; // Overrides material if present
 };
 
-struct Sphere : SceneObject 
+struct Sphere
 {
     Vector3 center;
     float radius;
+    SceneObjectInfo* object_info;
 };
 
-struct Face : SceneObject 
+struct Face 
 {
     Vector3 surface_normal;
     Vector3 vertex[3];
@@ -249,6 +254,7 @@ struct Face : SceneObject
     Vector3 vertex_normal[3];
     Vector3 barycentric_cords;
     Point texture_coords[3];
+    SceneObjectInfo* object_info;
 };
 
 struct Light
@@ -266,4 +272,8 @@ struct Intersection
     Vector3 normal;
 };
 
-#define RayTraceResults std::map<SceneObject*, std::vector<Intersection>>
+struct ObjectIntersections 
+{
+    SceneObjectInfo* object_info;
+    std::vector<Intersection> intersections;
+};
