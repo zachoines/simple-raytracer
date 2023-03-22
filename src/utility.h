@@ -128,18 +128,3 @@ Texture* read_texture(std::string path, Texture* texture) {
     
     return texture;
 }
-
-Material read_material(std::vector<std::string> args) {
-    Material material;
-    material.diffuse.r = std::stof(args[0]);
-    material.diffuse.g = std::stof(args[1]);
-    material.diffuse.b = std::stof(args[2]);
-    material.specular.r = std::stof(args[3]);
-    material.specular.g = std::stof(args[4]);
-    material.specular.b = std::stof(args[5]);
-    material.ka = std::stof(args[6]);
-    material.kd = std::stof(args[7]);
-    material.ks = std::stof(args[8]);
-    material.n = std::stof(args[9]);
-    return material;
-}

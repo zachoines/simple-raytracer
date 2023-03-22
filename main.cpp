@@ -39,8 +39,8 @@ Color ShadeRay(SceneObjectInfo* intersected_object_info, Intersection intersecti
         if (intersected_object_info->type == "sphere") 
         {
             // Find texture coorinates
-            float v = acos(intersection.normal.z()) / M_PI;
-            float phi = atan2(intersection.normal.y(), intersection.normal.x());
+            float v = acos(intersection.normal.z) / M_PI;
+            float phi = atan2(intersection.normal.y, intersection.normal.x);
             float u;
             u = map(phi, -M_PI, M_PI, 0.0, 1.0);
             // if (phi > 0.0) {
@@ -71,13 +71,13 @@ Color ShadeRay(SceneObjectInfo* intersected_object_info, Intersection intersecti
             Face* face = faces[intersected_object_info->id];
   
             float u = 
-                (face->barycentric_cords.values[0]*std::clamp<float>(face->texture_coords[0].x, 0.0, 1.0)) +
-                (face->barycentric_cords.values[1]*std::clamp<float>(face->texture_coords[1].x, 0.0, 1.0)) +
-                (face->barycentric_cords.values[2]*std::clamp<float>(face->texture_coords[2].x, 0.0, 1.0));
+                (face->barycentric_cords.x * std::clamp<float>(face->texture_coords[0].x, 0.0, 1.0)) +
+                (face->barycentric_cords.y * std::clamp<float>(face->texture_coords[1].x, 0.0, 1.0)) +
+                (face->barycentric_cords.z * std::clamp<float>(face->texture_coords[2].x, 0.0, 1.0));
             float v = 
-                (face->barycentric_cords.values[0]*std::clamp<float>(face->texture_coords[0].y, 0.0, 1.0)) +
-                (face->barycentric_cords.values[1]*std::clamp<float>(face->texture_coords[1].y, 0.0, 1.0)) +
-                (face->barycentric_cords.values[2]*std::clamp<float>(face->texture_coords[2].y, 0.0, 1.0));
+                (face->barycentric_cords.x * std::clamp<float>(face->texture_coords[0].y, 0.0, 1.0)) +
+                (face->barycentric_cords.y * std::clamp<float>(face->texture_coords[1].y, 0.0, 1.0)) +
+                (face->barycentric_cords.z * std::clamp<float>(face->texture_coords[2].y, 0.0, 1.0));
 
 
             v = std::clamp<float>(v, 0.0, 1.0);
@@ -133,7 +133,6 @@ Color ShadeRay(SceneObjectInfo* intersected_object_info, Intersection intersecti
     for (Light light : scene_lights) 
     {
         Vector3 L, H;
-        bool obstructed = false;
 
         /*
             If directional light source. These are at infinite distance. All rays point in same direction.
@@ -153,24 +152,17 @@ Color ShadeRay(SceneObjectInfo* intersected_object_info, Intersection intersecti
 
             for ( auto [object, intersections] : objects_intersections) 
             {    
-                if ((object->type == "sphere") || (object->type == "face"))
+                if (object->id == intersected_object_info->id) 
                 {
-                    /*
-                        For spheres, we do not consider self intersections
-                    */
-                    if (object->id == intersected_object_info->id) 
+                    continue;
+                }
+                
+                for (auto intersection : intersections) 
+                {
+                    if (intersection.distance > 0.0f) 
                     {
-                        continue;
+                        shadow_mask = { 0.0, 0.0, 0.0 };
                     }
-                    
-                    for (auto intersection : intersections) 
-                    {
-                        if (intersection.distance > 0.0f) 
-                        {
-                            shadow_mask = { 0.0, 0.0, 0.0 };
-                            obstructed = true;
-                        }
-                    }    
                 }
             }
         }
@@ -192,30 +184,24 @@ Color ShadeRay(SceneObjectInfo* intersected_object_info, Intersection intersecti
           
             for ( auto [object, intersections] : objects_intersections) 
             {    
-                if ((object->type == "sphere") || (object->type == "face")) 
-                {
-                    /*
-                        For spheres, we do not consider self intersections
-                    */
-                    if (object->id == intersected_object_info->id) {
-                        continue;
-                    }
-                    
-                    /*
-                        Find if object intersection is in-between object and light source
-                    */ 
-                    for (auto intersection : intersections) 
-                    {
-                        if (intersection.distance > 0.0f && intersection.distance < distance_to_light) 
-                        {
-                            shadow_mask = { 0.0, 0.0, 0.0 };
-                            obstructed = true;
-                        }
-                    }    
+                /*
+                    We do not consider self intersections
+                */
+                if (object->id == intersected_object_info->id) {
+                    continue;
                 }
+                
+                /*
+                    Find if object intersection is in-between object and light source
+                */ 
+                for (auto intersection : intersections) 
+                {
+                    if (intersection.distance > 0.0f && intersection.distance < distance_to_light) 
+                    {
+                        shadow_mask = { 0.0, 0.0, 0.0 };
+                    }
+                }  
             }
-
-            obstructions.push_back(obstructed);
         }
   
         Vector3 V = (intersection.point - view_origin).norm();
@@ -395,19 +381,19 @@ std::vector<ObjectIntersections> TraceRay(Vector3 view_origin, Vector3 ray)
                     g = (d11*d2p - d12*d1p) / det;
                     a = 1.0f - ( b + g );
 
-                    Vector3 barycentric_cords;
-                    barycentric_cords.values[0] = a;
-                    barycentric_cords.values[1] = b;
-                    barycentric_cords.values[2] = g;
-                    face_object->barycentric_cords = barycentric_cords;
+                    face_object->barycentric_cords = {
+                        .x = a,
+                        .y = b,
+                        .z = g
+                    };
 
                     if (((0.0f < a) && (a < 1.0f)) && ((0.0f < b) && ( b < 1.0f)) && ((0.0f < g) && (g < 1.0f))) {
                         Vector3 normal;
                         if (face_object->smooth_shading) {
                             normal = (
-                                (face_object->vertex_normal[0].norm() * face_object->barycentric_cords.values[0]) + 
-                                (face_object->vertex_normal[1].norm() * face_object->barycentric_cords.values[1]) + 
-                                (face_object->vertex_normal[2].norm() * face_object->barycentric_cords.values[2])
+                                (face_object->vertex_normal[0].norm() * face_object->barycentric_cords.x) + 
+                                (face_object->vertex_normal[1].norm() * face_object->barycentric_cords.y) + 
+                                (face_object->vertex_normal[2].norm() * face_object->barycentric_cords.z)
                             ).norm();    
                         } else {
                             normal = face_object->surface_normal;
@@ -531,32 +517,6 @@ Mat3D create_view_window_and_ray_trace(Vector3 view_origin, Vector3 view_directi
     return matt;
 }
 
-
-/*
-    Checks if string arguement is in valid arugments lists
-    q Arguement to check
-    scene_objects Whether to check the scene objects list 
-*/
-bool check_args(std::string q, bool scene_objects = false)
-{
-    if (scene_objects) {
-        for(int x = 0; x < num_obj_types; x++){
-            if (object_types[x] == q){
-                return true;
-            }
-        }
-    } else {
-        for(int x = 0; x < num_commands; x++){
-            if (valid_commands[x] == q){
-                return true;
-            }
-        }
-    }
-
-    return false;
-}
-
-
 /*
     Valid Args for config file:
 
@@ -580,13 +540,15 @@ bool check_args(std::string q, bool scene_objects = false)
 
 int main(int argc,char* argv[])
 {
+    // Storage
     std::vector<Texture*> textures;
     std::vector<Light> scene_lights;
     std::map<std::string, std::vector<std::string>> commands;
-    std::map<std::string, Point> texture_coords;
+    std::map<unsigned int, Point> texture_coords;
     std::map<unsigned int, Vector3> vertices;
     std::map<unsigned int, Vector3> normals;
-    
+
+    // Counters for unique object id's
     unsigned int obj_id_counter = 0;
     unsigned int vertex_counter = 0;
     unsigned int normal_counter = 0;
@@ -597,13 +559,21 @@ int main(int argc,char* argv[])
     Material current_material;
     bool use_texture = false;
     bool has_material = false;
+
+    // Scene related variables
+    Vector3 view_origin;
+    int height, width;
+    Vector3 view_direction;
+    Vector3 view_up;
+    float fov_h;
+    Color background_color;
     
     if(argc > 1)
     {
         /*
             Find and Read in image properties file
             Then parse tokens from image properties file.
-            Store commands and arguements for later use
+            Store commands and arguments for later use
         */
         std::string input_file_name{argv[1]};
         std::ifstream input_file(input_file_name);
@@ -612,7 +582,7 @@ int main(int argc,char* argv[])
             
             // Read in one line at a time
             while (std::getline(input_file, image_properties_string)){
-                std::vector<std::string> image_properties;
+                std::vector<std::string> arguments;
                 std::istringstream ss(image_properties_string);
                 std::string del;
 
@@ -620,298 +590,448 @@ int main(int argc,char* argv[])
                 while(std::getline(ss, del, ' ')) {
                     // If not blank string or comment
                     if (!del.empty() || del.at(0) != '#') {
-                        image_properties.push_back(del);
+                        arguments.push_back(del);
                     }
                 }
 
-                // If blank line or command without arguements
-                if (image_properties.size() <= 1) {
+                if (arguments.size() == 0) {
                     continue;
+                }
 
-                // If argument is a scene properties command
-                } else if (check_args(image_properties[0])) {
-                    std::string command = image_properties[0];
-                    image_properties.erase(image_properties.begin());
+                std::string command = arguments[0];
+                arguments.erase(arguments.begin());
 
-                    /*
-                        Because an object's color/texture is relative to previous command
-                        'texture' will overwrite 'mtcolor', and vice versa.
-                    */
-                    if (command == "texture") {
-                        Texture* texture = nullptr;
-                        use_texture = true;
-                        try
-                        {
-                            texture = read_texture(image_properties[0], texture);
-                            current_texture = texture;
-                            textures.push_back(texture);
-                        }
-                        catch(const std::exception& e)
-                        {
-                            std::cerr << e.what() << '\n';
-                            std::cout << "ERROR: Issue reading 'texture' from ppm. Please verify." << std::endl;
-                            return 0;
-                        }
-                    } else if (command == "mtlcolor") {
-                        Material material;
-                        use_texture = false;
-                        try
-                        {
-                            material = read_material(image_properties);
-                            current_material = material;
-                            has_material = true;
-                        }
-                        catch(const std::exception& e)
-                        {
-                            std::cerr << e.what() << '\n';
-                            std::cout << "ERROR: Issue parsing 'material' from arguments. Please verify." << std::endl;
-                            return 0;
-                        }
-                    } else {
-                        commands[command] = image_properties;
-                    }
-                
-                // If arguement is a scene object
-                } else if (check_args(image_properties[0], true)) {
-                    obj_id_counter++;
-                    if (image_properties[0] == "sphere") 
+                // Hoist switch variables here
+                Texture* new_texture = nullptr;
+                SceneObjectInfo* sphere_object_info = nullptr;
+                Sphere* sphere_object = nullptr;
+                Face* triangle = nullptr;
+                SceneObjectInfo* face_object_info = nullptr;
+                Light light;
+                Material material;
+
+                // If blank line or command without arguments
+                if (arguments.size() == 0) {
+                    continue;
+                } else {
+                    try
                     {
-                        Sphere* sphere_object = new Sphere();
-                        SceneObjectInfo* object_info = new SceneObjectInfo();
-                        try
+                        switch (argsStringValues[command])
                         {
-                            object_info->id = obj_id_counter;
-                            object_info->type = "sphere";
-                            sphere_object->radius = std::stof(image_properties[4]);
-                            sphere_object->center = {
-                                {std::stof(image_properties[1]), std::stof(image_properties[2]), std::stof(image_properties[3])}
-                            };
-                        }
-                        catch(const std::exception& e)
-                        {
-                            std::cerr << e.what() << '\n';
-                            std::cout << "ERROR: Invalid args for 'sphere' object. Please verify." << std::endl;
-                            return 0;
-                        }
-
-                        try
-                        {
-                            object_info->material = current_material;
-
-                            if (use_texture) {
-                                if (!has_material || current_texture == nullptr) {
-                                    std::cout << "ERROR: Must define a 'mtlcolor' and 'texture'. Please verify." << std::endl;
-                                    return 0; 
-                                }
-                                object_info->texture = current_texture;
-                                object_info->has_texture = true;
-                            } else {
-                                if (!has_material) {
-                                    std::cout << "ERROR: Must define a 'mtlcolor'. Please verify." << std::endl;
-                                    return 0; 
-                                }
-                                object_info->has_texture = false;
-                            }    
-                        }
-                        catch(const std::exception& e)
-                        {
-                            std::cerr << e.what() << '\n';
-                            std::cout << "ERROR: Invalid args for 'mtlcolor' command. Please verify." << std::endl;
-                            return 0;
-                        }
-                        
-                        sphere_object->object_info = object_info;
-                        scene_objects["sphere"].push_back(
-                            object_info
-                        );
-                        spheres[object_info->id] = sphere_object;
-                    } 
-                    else if (image_properties[0] == "light") 
-                    {
-                        /*
-                            Extract light. Validate Correctness.
-                        */
-                        Light light;
-                        try {
-                            light.w = std::stof(image_properties[4]);
-                            if (light.w == 0) {
-                                light.direction.values[0] = std::stof(image_properties[1]);
-                                light.direction.values[1] = std::stof(image_properties[2]);
-                                light.direction.values[2] = std::stof(image_properties[3]); 
-                            } else {
-                                light.position.values[0] = std::stof(image_properties[1]);
-                                light.position.values[1] = std::stof(image_properties[2]);
-                                light.position.values[2] = std::stof(image_properties[3]); 
-                            }
-
-                            light.color.r = std::stof(image_properties[5]);
-                            light.color.g = std::stof(image_properties[6]);
-                            light.color.b = std::stof(image_properties[7]);
-                        }
-                        catch(const std::exception& e)
-                        {
-                            std::cerr << e.what() << '\n';
-                            std::cout << "ERROR: Invalid args for 'light' command. Please verify." << std::endl;
-                            return 0;
-                        }
-                        
-                        scene_lights.push_back(light);
-                    } else if (image_properties[0] == "v") {
-                        /*
-                            Extract Vertex. Validate Correctness.
-                        */
-                        try
-                        {
-                            vertex_counter++;
-                            Vector3 vertex;
-                            vertex.values[0] = std::stof(image_properties[1]); 
-                            vertex.values[1] = std::stof(image_properties[2]);
-                            vertex.values[2] = std::stof(image_properties[3]);
-                            vertices[vertex_counter] = vertex;
+                        case ArgValues::eye:
+                            /* code */
+                            commands[command] = arguments;
                             
-                        }
-                        catch(const std::exception& e)
-                        {
-                            std::cerr << e.what() << '\n';
-                            std::cout << "ERROR: Invalid args for vertex. Please verify." << std::endl;
-                            return 0;
-                        }
-                    } else if (image_properties[0] == "vn") {
-                        /*
-                            Extract Vertex normal. Validate Correctness.
-                        */
-                        try
-                        {
-                            normal_counter++;
-                            Vector3 vertex_normal;
-                            vertex_normal.values[0] = std::stof(image_properties[1]); 
-                            vertex_normal.values[1] = std::stof(image_properties[2]);
-                            vertex_normal.values[2] = std::stof(image_properties[3]);
-                            normals[normal_counter] = vertex_normal;
-                        }
-                        catch(const std::exception& e)
-                        {
-                            std::cerr << e.what() << '\n';
-                            std::cout << "ERROR: Invalid args for vertex normal. Please verify." << std::endl;
-                            return 0;
-                        }
-                    } else if (image_properties[0] == "f") {
-                        /*
-                            Extract Face. Validate Correctness.
-                        */
-                        Face* triangle = new Face();
-                        SceneObjectInfo* object_info = new SceneObjectInfo();
-                        obj_id_counter++;
-                        object_info->type = "face";
-                        object_info->id = obj_id_counter; 
-                        
-                        try
-                        {
-                            for (int i = 1; i <= 3; i++) {
-                                // Parse for vertex normals and/or texture coordinates
-                                unsigned int t; // Texture coord
-                                unsigned int n; // Normal
-                                unsigned int v; // Vertex
-                                if (sscanf(image_properties[i].c_str(), "%d/%d/%d", &v, &t, &n ) == 3) {
-                                    // success reading a face in v/t/n format. For a smooth shaded, textured triangle.
-                                    triangle->vertex[i - 1] = vertices[v];
-                                    triangle->vertex_normal[i - 1] = normals[n];
-                                    triangle->smooth_shading = true;
-                                    triangle->texture_coords[i - 1] = texture_coords[std::to_string(t)];
-                                    object_info->has_texture = true;
-
-                                } else if (sscanf(image_properties[i].c_str(), "%d//%d", &v, &n ) == 2) {
-                                    //success reading a face in v//n format. For a smooth shaded, untextured triangle.
-                                    triangle->vertex[i - 1] = vertices[v];
-                                    triangle->vertex_normal[i - 1] = normals[n];
-                                    triangle->smooth_shading = true;
-                                    object_info->has_texture = false;
-
-                                } else if (sscanf(image_properties[i].c_str(), "%d/%d", &v, &t) == 2) {
-                                    // success reading a face in v/t format. For a non-smooth shaded, textured triangle.
-                                    triangle->vertex[i - 1] = vertices[v];
-                                    triangle->smooth_shading = false;
-                                    triangle->texture_coords[i - 1] = texture_coords[std::to_string(t)];
-                                    object_info->has_texture = true;
-                                
-                                } else if (sscanf(image_properties[i].c_str(), "%d", &v) == 1) {
-                                    // success reading a face in v format; proceed accordingly
-                                    triangle->vertex[i - 1] = vertices[v];
-                                    triangle->smooth_shading = false;
-                                    object_info->has_texture = false;                               
-                                } else {
-                                    // error reading face data
-                                    std::cout << "ERROR: Invalid args for 'f' object. Please verify." << std::endl;
-                                    return 0;
-                                }
-                            };
-
-                            // Enter material/ texture information information
                             try
                             {
-                                object_info->material = current_material;
-
-                                if (use_texture) {
-                                    if (!has_material || current_texture == nullptr) {
-                                        std::cout << "ERROR: Must define a 'mtlcolor' and 'texture'. Please verify." << std::endl;
-                                        return 0; 
-                                    }
-                                    object_info->texture = current_texture;
-                                    object_info->has_texture = true;
-                                } else {
-                                    if (!has_material) {
-                                        std::cout << "ERROR: Must define a 'mtlcolor'. Please verify." << std::endl;
-                                        return 0; 
-                                    }
-                                    object_info->has_texture = false;
-                                }
+                                view_origin = {
+                                    .x = std::stof(arguments[0]),
+                                    .y = std::stof(arguments[1]),
+                                    .z = std::stof(arguments[2])
+                                };
                             }
                             catch(const std::exception& e)
                             {
-                                std::cerr << e.what() << '\n';
-                                std::cout << "ERROR: Invalid args for 'mtlcolor' (material color) command. Please verify." << std::endl;
-                                return 0;
+                                std::cerr << e.what() << std::endl;
+                                throw std::invalid_argument("ERROR: Invalid args for 'eye' command. Please verify.");
+                            }
+                            break;
+                        case ArgValues::viewdir:
+                            /*
+                                Extract view direction. Validate Correctness.
+                            */
+                            commands[command] = arguments;
+                            try
+                            {
+                                view_direction = {
+                                    .x = std::stof(arguments[0]),
+                                    .y = std::stof(arguments[1]),
+                                    .z = std::stof(arguments[2])
+                                };
+                            }
+                            catch(const std::exception& e)
+                            {
+                                std::cerr << e.what() << std::endl;
+                                throw std::invalid_argument("ERROR: Invalid args for 'viewdir' command. Please verify.");
+                            }
+                            break;
+                        case ArgValues::updir:
+                            /*
+                                Extract view up. Validate Correctness.
+                            */
+                            commands[command] = arguments;
+                            try
+                            {
+                                view_up = {
+                                    .x = std::stof(arguments[0]),
+                                    .y = std::stof(arguments[1]),
+                                    .z = std::stof(arguments[2])
+                                };
+                            }
+                            catch(const std::exception& e)
+                            {
+                                std::cerr << e.what() << std::endl;
+                                throw std::invalid_argument("ERROR: Invalid args for 'updir' command. Please verify.");
+                            }
+                            break;
+                        case ArgValues::hfov:
+                            /*
+                                Extract horizontal FOV. Validate Correctness.
+                            */
+                            commands[command] = arguments;
+                            try
+                            {
+                                fov_h = std::stof(arguments[0]);
+                            }
+                            catch(const std::exception& e)
+                            {
+                                std::cerr << e.what() << std::endl;
+                                throw std::invalid_argument("ERROR: Invalid args for 'hfov' command. Please verify.");
+                            }
+                            break;
+                        case ArgValues::imsize:
+                            /*
+                                Extract height and width. Validate Correctness.
+                            */ 
+                            commands[command] = arguments;
+                            
+                            try
+                            {
+                                height = std::stoi(arguments[1]);
+                            }
+                            catch(const std::exception& e)
+                            {
+                                std::cerr << e.what() << std::endl;
+                                throw std::invalid_argument("ERROR: Invalid image dimensions. Please verify.");
                             }
 
-                            // Calculate main surface normal
-                            Vector3 e1 = triangle->vertex[1] - triangle->vertex[0];
-                            Vector3 e2 = triangle->vertex[2] - triangle->vertex[0];
-                            triangle->surface_normal = e1.cross(e2).norm();
-                            triangle->object_info = object_info;
-                            faces[object_info->id] = triangle; 
-                            scene_objects["face"].push_back(
-                                object_info
-                            );
-                        }
-                        catch(const std::exception& e)
-                        {
-                            std::cout << "ERROR: Invalid args for 'f' (face) object. Please verify." << std::endl;
-                            return 0;
-                        }
-                    } else if (image_properties[0] == "vt") {
-                        
-                        /*
-                            Extract texture coordinate. Validate Correctness.
-                        */
-                        try
-                        {
-                            Point coord;
-                            coord.x = std::stof(image_properties[1]); // x coord
-                            coord.y = std::stof(image_properties[2]); // y coord
+                            try
+                            {
+                                width = std::stoi(arguments[0]);
+                            }
+                            catch(const std::exception& e)
+                            {
+                                std::cerr << e.what() << std::endl;
+                                throw std::invalid_argument("ERROR: Invalid image dimensions. Please verify.");
+                            } 
 
-                            texture_coord_counter++;
-                            texture_coords[std::to_string(texture_coord_counter)] = coord;
+                            if (height <= 1 || width <= 1) {
+                                throw std::invalid_argument("ERROR: Invalid image dimensions. Please verify.");
+                            }
+                            
+                            break;
+                        case ArgValues::bkgcolor:
+                            /*
+                                Extract background color. Validate Correctness.
+                            */
+                            commands[command] = arguments;
+                            try
+                            {
+                                background_color = {
+                                    .r = std::stof(arguments[0]),
+                                    .g = std::stof(arguments[1]),
+                                    .b = std::stof(arguments[2])
+                                };
+                            }
+                            catch(const std::exception& e)
+                            {
+                                std::cerr << e.what() << std::endl;
+                                throw std::invalid_argument("ERROR: Invalid args for 'bkgcolor' command. Please verify.");
+                            }
+                            break;
+                        case ArgValues::mtlcolor:
+                            use_texture = false;
+                            try
+                            {
+                                material.diffuse = {
+                                    .r = std::stof(arguments[0]),
+                                    .g = std::stof(arguments[1]),
+                                    .b = std::stof(arguments[2])
+                                };
+
+                                material.specular = { 
+                                    .r = std::stof(arguments[3]),
+                                    .g = std::stof(arguments[4]),
+                                    .b = std::stof(arguments[5])
+                                };
+
+                                material.ka = std::stof(arguments[6]);
+                                material.kd = std::stof(arguments[7]);
+                                material.ks = std::stof(arguments[8]);
+                                material.n = std::stof(arguments[9]);
+
+                                if (arguments.size() == 12) {
+                                    material.opacity = std::stof(arguments[10]);
+                                    material.refraction_index = std::stof(arguments[11]);
+                                } else {
+                                    material.opacity = 1.0;
+                                    material.refraction_index = 1.0;
+                                }
+                                current_material = material;
+                                has_material = true;
+                            }
+                            catch(const std::exception& e)
+                            {
+                                std::cerr << e.what() << std::endl;
+                                throw std::runtime_error("ERROR: Issue parsing 'material' from arguments. Please verify.");
+                            }
+                            break;
+                        case ArgValues::texture:
+                            /*
+                                Because an object's color/texture is relative to previous command
+                                'texture' will overwrite 'mtcolor', and vice versa.
+                            */
+                            
+                            use_texture = true;
+                            try
+                            {
+                                new_texture = read_texture(arguments[0], new_texture);
+                                current_texture = new_texture;
+                                textures.push_back(new_texture);
+                            }
+                            catch(const std::exception& e)
+                            {
+                                std::cerr << e.what() << std::endl;
+                                throw std::runtime_error("ERROR: Issue reading 'texture' from ppm. Please verify.");
+                            }
+                            break;
+                        case ArgValues::sphere:
+                            obj_id_counter++;
+                            sphere_object = new Sphere(); 
+                            sphere_object_info = new SceneObjectInfo();
+                            try
+                            {
+                                sphere_object_info->id = obj_id_counter;
+                                sphere_object_info->type = "sphere";
+                                sphere_object->radius = std::stof(arguments[3]);
+                                sphere_object->center = {
+                                    .x = std::stof(arguments[0]), 
+                                    .y = std::stof(arguments[1]), 
+                                    .z = std::stof(arguments[2])
+                                };
+                            }
+                            catch(const std::exception& e)
+                            {
+                                std::cerr << e.what() << std::endl;
+                                throw std::invalid_argument("ERROR: Invalid args for 'sphere' object. Please verify.");
+                            }
+
+                            try
+                            {
+                                sphere_object_info->material = current_material;
+
+                                if (use_texture) {
+                                    if (!has_material || current_texture == nullptr) {
+                                        throw std::invalid_argument("ERROR: Must define a 'mtlcolor' and 'texture'. Please verify.");
+                                    }
+                                    sphere_object_info->texture = current_texture;
+                                    sphere_object_info->has_texture = true;
+                                } else {
+                                    if (!has_material) {
+                                        throw std::invalid_argument("ERROR: Must define a 'mtlcolor'. Please verify.");
+                                    }
+                                    sphere_object_info->has_texture = false;
+                                }    
+                            }
+                            catch(const std::exception& e)
+                            {
+                                std::cerr << e.what() << std::endl;
+                                throw std::invalid_argument("ERROR: Invalid args for 'mtlcolor' command. Please verify.");
+                            }
+                            
+                            sphere_object->object_info = sphere_object_info;
+                            scene_objects["sphere"].push_back(
+                                sphere_object_info
+                            );
+                            spheres[sphere_object_info->id] = sphere_object;
+                            break;
+                        case ArgValues::light:
+                            /*
+                                Extract light. Validate Correctness.
+                            */
+                            try {
+                                light.w = std::stof(arguments[3]);
+                                if (light.w == 0) {
+                                    light.direction = {
+                                        .x = std::stof(arguments[0]),
+                                        .y = std::stof(arguments[1]),
+                                        .z = std::stof(arguments[2])
+                                    };
+                                } else {
+                                    light.position = {
+                                        .x = std::stof(arguments[0]),
+                                        .y = std::stof(arguments[1]),
+                                        .z = std::stof(arguments[2])
+                                    };
+                                }
+
+                                light.color = { 
+                                    .r = std::stof(arguments[4]),
+                                    .g = std::stof(arguments[5]),
+                                    .b = std::stof(arguments[6])
+                                };
+                            }
+                            catch(const std::exception& e)
+                            {
+                                std::cerr << e.what() << std::endl;
+                                throw std::invalid_argument("ERROR: Invalid args for 'light' command. Please verify.");
+                            }
+                            
+                            scene_lights.push_back(light);
+                            break;
+                        case ArgValues::v:
+                            /*
+                                Extract Vertex. Validate Correctness.
+                            */
+                            try
+                            {
+                                vertex_counter++;
+                                vertices[vertex_counter] = {
+                                    .x = std::stof(arguments[0]),
+                                    .y = std::stof(arguments[1]),
+                                    .z = std::stof(arguments[2])
+                                };
+                            }
+                            catch(const std::exception& e)
+                            {
+                                std::cerr << e.what() << std::endl;
+                                throw std::invalid_argument("ERROR: Invalid args for vertex. Please verify.");
+                            }
+                            break;
+                        case ArgValues::vn:
+                            /*
+                                Extract Vertex normal. Validate Correctness.
+                            */
+                            try
+                            {
+                                normal_counter++;
+                                normals[normal_counter] = {
+                                    .x = std::stof(arguments[0]),
+                                    .y = std::stof(arguments[1]),
+                                    .z = std::stof(arguments[2])
+                                };
+                            }
+                            catch(const std::exception& e)
+                            {
+                                std::cerr << e.what() << std::endl;
+                                throw std::invalid_argument("ERROR: Invalid args for vertex normal. Please verify.");
+                            }
+                            break;
+                        case ArgValues::vt:
+                            /*
+                                Extract texture coordinate. Validate Correctness.
+                            */
+                            try
+                            {
+                                Point coord = {
+                                    .x = std::stof(arguments[0]),
+                                    .y = std::stof(arguments[1])
+                                };
+
+                                texture_coord_counter++;
+                                texture_coords[texture_coord_counter] = coord;
+                            }
+                            catch(const std::exception& e)
+                            {
+                                std::cerr << e.what() << std::endl;
+                                throw std::invalid_argument("ERROR: Invalid args for texture coordinate. Please verify.");
+                            }
+                            break;
+                        case ArgValues::f:
+                            /*
+                                Extract Face. Validate Correctness.
+                            */
+                            triangle = new Face();
+                            face_object_info = new SceneObjectInfo();
+                            obj_id_counter++;
+                            face_object_info->type = "face";
+                            face_object_info->id = obj_id_counter; 
+                            
+                            try
+                            {
+                                for (int i = 0; i < 3; i++) {
+                                    // Parse for vertex normals and/or texture coordinates
+                                    unsigned int t; // Texture coord
+                                    unsigned int n; // Normal
+                                    unsigned int v; // Vertex
+                                    if (sscanf(arguments[i].c_str(), "%d/%d/%d", &v, &t, &n ) == 3) {
+                                        // success reading a face in v/t/n format. For a smooth shaded, textured triangle.
+                                        triangle->vertex[i] = vertices[v];
+                                        triangle->vertex_normal[i] = normals[n];
+                                        triangle->smooth_shading = true;
+                                        triangle->texture_coords[i] = texture_coords[t];
+                                        face_object_info->has_texture = true;
+
+                                    } else if (sscanf(arguments[i].c_str(), "%d//%d", &v, &n ) == 2) {
+                                        //success reading a face in v//n format. For a smooth shaded, untextured triangle.
+                                        triangle->vertex[i] = vertices[v];
+                                        triangle->vertex_normal[i] = normals[n];
+                                        triangle->smooth_shading = true;
+                                        face_object_info->has_texture = false;
+
+                                    } else if (sscanf(arguments[i].c_str(), "%d/%d", &v, &t) == 2) {
+                                        // success reading a face in v/t format. For a non-smooth shaded, textured triangle.
+                                        triangle->vertex[i] = vertices[v];
+                                        triangle->smooth_shading = false;
+                                        triangle->texture_coords[i] = texture_coords[t];
+                                        face_object_info->has_texture = true;
+                                    
+                                    } else if (sscanf(arguments[i].c_str(), "%d", &v) == 1) {
+                                        // success reading a face in v format; proceed accordingly
+                                        triangle->vertex[i] = vertices[v];
+                                        triangle->smooth_shading = false;
+                                        face_object_info->has_texture = false;                               
+                                    } else {
+                                        // error reading face data
+                                        throw std::invalid_argument("ERROR: Invalid args for 'f' object. Please verify.");
+                                    }
+                                };
+
+                                // Enter material/ texture information information
+                                face_object_info->material = current_material;
+
+                                if (use_texture) {
+                                    if (!has_material || current_texture == nullptr) {
+                                        throw std::invalid_argument("ERROR: Must define a 'mtlcolor' and 'texture'. Please verify.");
+                                    }
+                                    face_object_info->texture = current_texture;
+                                    face_object_info->has_texture = true;
+                                } else {
+                                    if (!has_material) {
+                                        throw std::invalid_argument("ERROR: Must define a 'mtlcolor'. Please verify.");
+                                    }
+                                    face_object_info->has_texture = false;
+                                }
+
+                                // Calculate main surface normal
+                                Vector3 e1 = triangle->vertex[1] - triangle->vertex[0];
+                                Vector3 e2 = triangle->vertex[2] - triangle->vertex[0];
+                                triangle->surface_normal = e1.cross(e2).norm();
+                                triangle->object_info = face_object_info;
+                                faces[face_object_info->id] = triangle; 
+                                scene_objects["face"].push_back(
+                                    face_object_info
+                                );
+                            }
+                            catch(const std::exception& e)
+                            {
+                                std::cerr << e.what() << std::endl;
+                                throw std::invalid_argument("ERROR: Invalid args for 'f' (face) object. Please verify.");
+                            }
+                            /* code */
+                            break;
+                        default:
+                            continue;
+                            break;
                         }
-                        catch(const std::exception& e)
-                        {
-                            std::cerr << e.what() << '\n';
-                            std::cout << "ERROR: Invalid args for texture coordinate. Please verify." << std::endl;
-                            return 0;
-                        }
-                    } else {
-                        std::cout << "WARNING: invalid argument '" << image_properties[0] << "' found in config. " << "Please verify path." << std::endl;
                     }
+                    catch(const std::exception& e)
+                    {
+                        std::cerr << e.what() << std::endl;
+                        throw std::invalid_argument("ERROR: Command '" + command + "' is undefined. Please verify input.");
+                    }   
                 }
+                
             }
         } else {
             std::cout << "ERROR: Issue reading input file '" << input_file_name << "'. " << "Please verify path." << std::endl;
@@ -919,148 +1039,36 @@ int main(int argc,char* argv[])
         }
         
         /*
-            Extract height and width. Validate Correctness.
-        */ 
-        int height, width;
+            Assert commands have been passed 
+        */
         if (commands.find("imsize") == commands.end()) {
             std::cout << "Error: Requires command 'imsize'" << std::endl;
             return 0;
-        } else {
-            try
-            {
-                height = std::stoi(commands.at("imsize")[1]);
-            }
-            catch(const std::exception& e)
-            {
-                std::cerr << e.what() << '\n';
-                std::cout << "ERROR: Invalid image dimensions. Please verify." << std::endl;
-                return 0;
-            }
-
-            try
-            {
-                width = std::stoi(commands.at("imsize")[0]);
-            }
-            catch(const std::exception& e)
-            {
-                std::cerr << e.what() << '\n';
-                std::cout << "ERROR: Invalid image dimensions. Please verify." << std::endl;
-                return 0;
-            } 
-
-            if (height <= 1 || width <= 1) {
-                std::cout << "ERROR: Invalid image dimensions. Please verify." << std::endl;
-                return 0;
-            }
         }
-
-        /*
-            Extract view origin. Validate Correctness.
-        */
-        Vector3 view_origin; 
+        
         if (commands.find("eye") == commands.end()) {
             std::cout << "Error: Requires command 'eye'" << std::endl;
             return 0;
-        } else {
-            try
-            {
-                view_origin.values[0] = std::stof(commands.at("eye")[0]);
-                view_origin.values[1] = std::stof(commands.at("eye")[1]);
-                view_origin.values[2] = std::stof(commands.at("eye")[2]);
-            }
-            catch(const std::exception& e)
-            {
-                std::cerr << e.what() << '\n';
-                std::cout << "ERROR: Invalid args for 'eye' command. Please verify." << std::endl;
-                return 0;
-            }
         }
-
     
-        /*
-            Extract view direction. Validate Correctness.
-        */
-        Vector3 view_direction;
         if (commands.find("viewdir") == commands.end()) {
             std::cout << "Error: Requires command 'viewdir'" << std::endl;
             return 0;
-        } else {
-            try
-            {
-                view_direction.values[0] = std::stof(commands.at("viewdir")[0]);
-                view_direction.values[1] = std::stof(commands.at("viewdir")[1]);
-                view_direction.values[2] = std::stof(commands.at("viewdir")[2]);
-            }
-            catch(const std::exception& e)
-            {
-                std::cerr << e.what() << '\n';
-                std::cout << "ERROR: Invalid args for 'viewdir' command. Please verify." << std::endl;
-                return 0;
-            }
         }
-
-        /*
-            Extract view up. Validate Correctness.
-        */
-        Vector3 view_up;
+        
         if (commands.find("updir") == commands.end()) {
             std::cout << "Error: Requires command 'updir'" << std::endl;
             return 0;
-        } else {
-            try
-            {
-                view_up.values[0] = std::stof(commands.at("updir")[0]);
-                view_up.values[1] = std::stof(commands.at("updir")[1]);
-                view_up.values[2] = std::stof(commands.at("updir")[2]);
-            }
-            catch(const std::exception& e)
-            {
-                std::cerr << e.what() << '\n';
-                std::cout << "ERROR: Invalid args for 'updir' command. Please verify." << std::endl;
-                return 0;
-            }
         }
-
-        /*
-            Extract horizontal FOV. Validate Correctness.
-        */
-        float fov_h;
+        
         if (commands.find("hfov") == commands.end()) {
             std::cout << "Error: Requires command 'hfov'" << std::endl;
             return 0;
-        } else {
-            try
-            {
-                fov_h = std::stof(commands.at("hfov")[0]);
-            }
-            catch(const std::exception& e)
-            {
-                std::cerr << e.what() << '\n';
-                std::cout << "ERROR: Invalid args for 'hfov' command. Please verify." << std::endl;
-                return 0;
-            }
         }
         
-        /*
-            Extract background color. Validate Correctness.
-        */
-        Color background_color;
         if (commands.find("bkgcolor") == commands.end()) {
             std::cout << "Error: Requires command 'bkgcolor'" << std::endl;
             return 0;
-        } else {
-            try
-            {
-                background_color.r = std::stof(commands.at("bkgcolor")[0]);
-                background_color.g = std::stof(commands.at("bkgcolor")[1]);
-                background_color.b = std::stof(commands.at("bkgcolor")[2]);
-            }
-            catch(const std::exception& e)
-            {
-                std::cerr << e.what() << '\n';
-                std::cout << "ERROR: Invalid args for 'bkgcolor' command. Please verify." << std::endl;
-                return 0;
-            }
         }
 
         /*
@@ -1104,7 +1112,7 @@ int main(int argc,char* argv[])
                 }
                 catch(const std::exception& e)
                 {
-                    std::cerr << e.what() << '\n';
+                    std::cerr << e.what() << std::endl;
                 }  
             }
         }
@@ -1112,7 +1120,7 @@ int main(int argc,char* argv[])
         image_stream.close();
 
     } else {
-        std::cout << "Error: Incorrect number of arguements in input file. Please follow this formate: imsize width height" << std::endl;
+        std::cout << "Error: Incorrect number of arguments in input file. Please follow this formate: imsize width height" << std::endl;
     }
 
     return 0;

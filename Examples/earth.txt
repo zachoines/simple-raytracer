@@ -6,5 +6,5 @@ imsize 512 512
 bkgcolor 0.5 0.7 0.9
 light 0 1 -1 0 1 1 1
 mtlcolor 0 1 0 1 1 1 0.2 0.8 0.1 20
-texture earthtexture.ppm
+texture textures/earthtexture.ppm
 sphere 0 0 0 2

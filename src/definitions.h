@@ -11,26 +11,13 @@ struct Point {
 };
 struct Vector3 
 {
-    float values[3] = { 0.0 };
-
-    float x () 
-    {
-        return values[0];
-    }
-
-    float y () 
-    {
-        return values[1];
-    }
-
-    float z () 
-    {
-        return values[2];
-    }
+    float x;
+    float y;
+    float z;
 
     float sum() 
     {
-        return values[0] + values[1] + values[2];
+        return x + y + z;
     } 
 
     float dot(Vector3 other) 
@@ -46,18 +33,18 @@ struct Vector3
     Vector3 square() 
     {
         Vector3 result = *this;
-        result.values[0] *= result.values[0];
-        result.values[1] *= result.values[1];
-        result.values[2] *= result.values[2];
+        result.x *= result.x;
+        result.y *= result.y;
+        result.z *= result.z;
         return result;
     } 
 
     Vector3 cross (Vector3 other) 
     {
         Vector3 result;
-        result.values[0]=this->y()*other.z() - this->z()*other.y();
-        result.values[1]=this->z()*other.x() - this->x()*other.z();
-        result.values[2]=this->x()*other.y() - this->y()*other.x();
+        result.x=this->y*other.z - this->z*other.y;
+        result.y=this->z*other.x - this->x*other.z;
+        result.z=this->x*other.y - this->y*other.x;
         return result;
     }
     
@@ -70,63 +57,63 @@ struct Vector3
     Vector3 operator * (float other) 
     {
         Vector3 result = *this;
-        result.values[0] *= other;
-        result.values[1] *= other;
-        result.values[2] *= other;
+        result.x *= other;
+        result.y *= other;
+        result.z *= other;
         return result;
     }
 
     Vector3 operator * (Vector3 other) 
     {
         Vector3 result = *this;
-        result.values[0] *= other.values[0];
-        result.values[1] *= other.values[1];
-        result.values[2] *= other.values[2];
+        result.x *= other.x;
+        result.y *= other.y;
+        result.z *= other.z;
         return result;
     }
 
     Vector3 operator / (float other) 
     {
         Vector3 result = *this;
-        result.values[0] /= other;
-        result.values[1] /= other;
-        result.values[2] /= other;
+        result.x /= other;
+        result.y /= other;
+        result.z /= other;
         return result;
     }
 
     Vector3 operator / (Vector3 other) 
     {
         Vector3 result = *this;
-        result.values[0] /= other.values[0];
-        result.values[1] /= other.values[1];
-        result.values[2] /= other.values[2];
+        result.x /= other.x;
+        result.y /= other.y;
+        result.z /= other.z;
         return result;
     }
 
     Vector3 operator + (Vector3 other) 
     {
         Vector3 result = *this;
-        result.values[0] += other.values[0];
-        result.values[1] += other.values[1];
-        result.values[2] += other.values[2];
+        result.x += other.x;
+        result.y += other.y;
+        result.z += other.z;
         return result;
     }
 
     Vector3 operator - (Vector3 other) 
     {
         Vector3 result = *this;
-        result.values[0] -= other.values[0];
-        result.values[1] -= other.values[1];
-        result.values[2] -= other.values[2];
+        result.x -= other.x;
+        result.y -= other.y;
+        result.z -= other.z;
         return result;
     }
 
     Vector3 operator - (float other) 
     {
         Vector3 result = *this;
-        result.values[0] -= other;
-        result.values[1] -= other;
-        result.values[2] -= other;
+        result.x -= other;
+        result.y -= other;
+        result.z -= other;
         return result;
     }
 
@@ -135,7 +122,13 @@ struct Vector3
         if (index < 0 || index > 2) {
             throw std::out_of_range("Vector3 only can be index from 0 to 2");
         }
-        return values[index];
+        if (index == 0) {
+            return x;
+        } else if (index == 1) {
+            return y;
+        } else {
+            return z;
+        }
     }
 };
 
@@ -227,7 +220,7 @@ struct Material
 {
     Color diffuse;
     Color specular;
-    float ka, kd, ks, n;
+    float ka, kd, ks, n, opacity, refraction_index;
 };
 
 struct SceneObjectInfo 
