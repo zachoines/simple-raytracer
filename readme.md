@@ -1,6 +1,7 @@
 # Overview
 This program is a raytracing based renderer that generates images using a properties file as input. This is a work in progress. 
 Currently supported features are: 
+- Reflections
 - Hard shadows
 - Point and directional lights
 - Phong Illumination Materials 

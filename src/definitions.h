@@ -162,6 +162,23 @@ struct Color
         result.b = std::clamp(other.b + result.b, 0.0f, 1.0f);
         return result;
     }
+
+    Color operator + (float other) 
+    {
+        Color result = *this;
+        result.r = std::clamp(other + result.r, 0.0f, 1.0f);
+        result.g = std::clamp(other + result.g, 0.0f, 1.0f);
+        result.b = std::clamp(other + result.b, 0.0f, 1.0f);
+        return result;
+    }
+
+    Color operator + (Vector3 from) {
+        return *this + Color({
+            .r = from.x,
+            .g = from.y,
+            .b = from.z
+        });
+    }
 };
 
 class Mat3D {
@@ -269,4 +286,13 @@ struct ObjectIntersections
 {
     SceneObjectInfo* object_info;
     std::vector<Intersection> intersections;
+};
+
+struct Globals {
+    std::map<std::string, std::vector<SceneObjectInfo*>> scene_object_infos;
+    std::map<int, Face*> faces;
+    std::map<int, Sphere*> spheres;
+    std::vector<Light> scene_lights;
+    std::map<std::string, std::vector<std::string>> commands;
+    std::map<std::string, float> other;
 };
