@@ -11,7 +11,7 @@
 */
 Mat3D create_view_window_and_ray_trace(Vector3 view_origin, Vector3 view_direction, Vector3 view_up, float fov_h, float res_h, float res_w, Color background_color);
 std::vector<ObjectIntersections> TraceRay(Vector3 view_origin, Vector3 ray);
-Color ShadeRay(Vector3 incoming_ray, SceneObjectInfo* intersected_object_info, Intersection intersection,  float recursion_depth=5);
+Color ShadeRay(Vector3 incoming_ray, SceneObjectInfo* intersected_object_info, Intersection intersection,  float recursion_depth=5, float incidence_refraction_index = 1.0, Color background_color={1.0, 1.0, 1.0}, RayState ray_state=RayState::ENTERING);
 
 /*
     Valid Args for config file:
@@ -74,6 +74,11 @@ int main(int argc,char* argv[])
         std::string input_file_name{argv[1]};
         std::ifstream input_file(input_file_name);
         std::string image_properties_string;
+
+        // Put environment variables
+        environment.other["recursion_depth"] = 10.0;
+        environment.other["epsilon"] = 1.0e-3;
+
         if ( input_file.is_open() ) {
             
             // Read in one line at a time
@@ -106,8 +111,8 @@ int main(int argc,char* argv[])
                 Light light;
                 Material material;
 
-                // If blank line or command without arguments
-                if (arguments.size() == 0) {
+                // If blank line or invalid command
+                if (arguments.size() == 0 || argsStringValues.find(command) == argsStringValues.end()) {
                     continue;
                 } else {
                     try
@@ -268,7 +273,7 @@ int main(int argc,char* argv[])
                                     material.opacity = std::stof(arguments[10]);
                                     material.refraction_index = std::stof(arguments[11]);
                                 } else {
-                                    material.opacity = 1.0;
+                                    material.opacity = 1.0; // Fully opaque by default
                                     material.refraction_index = 1.0;
                                 }
                                 current_material = material;
@@ -630,20 +635,17 @@ int main(int argc,char* argv[])
     return 0;
 }
 
-/*
-    Define the viewing window and begin ray tracing to determine color value of each pixel:
-
-    view_origin Defines center of the camera
-    view_direction Defines direction camera is looking
-    view_up Defines the up direction of the camera. Or the roll of the camera. 
-    fov_h Horizontal field of view
-    res_h Number of pixels in the horizontal direction
-    res_w Number of pixels in the virtical direction
-    background_color Color of the background pixels
-
-    v x1 y1 z1
-    f v1 v2 v3
-*/
+/**
+ * @brief  Define the viewing window and begin ray tracing to determine color value of each pixel
+ * @returns Returns an image
+ * @param view_origin The position of the camera
+ * @param view_direction The forward direction the camera
+ * @param view_up The up direction of camera. Determines tilt and roll.
+ * @param fov_h Horizontal feild of view
+ * @param res_h Height of view window
+ * @param res_w Width of view window
+ * @param background_color Default base color used when no ray intersections are found
+**/
 Mat3D create_view_window_and_ray_trace(Vector3 view_origin, Vector3 view_direction, Vector3 view_up, float fov_h, float res_h, float res_w, Color background_color) 
 {
 
@@ -719,7 +721,7 @@ Mat3D create_view_window_and_ray_trace(Vector3 view_origin, Vector3 view_directi
             }
             
             if (intersected_object != nullptr) {
-                pixel_color = ShadeRay(ray, intersected_object, min_intersection);    
+                pixel_color = ShadeRay(ray, intersected_object, min_intersection, environment.other["recursion_depth"], environment.other["bkg_refraction_index"], background_color);    
             }
             
             matt(i, j, 0) = static_cast<int>(map(pixel_color.r, 0, 1.0, MIN_PIXEL_VALUE, MAX_PIXEL_VALUE));
@@ -731,53 +733,73 @@ Mat3D create_view_window_and_ray_trace(Vector3 view_origin, Vector3 view_directi
     return matt;
 }
 
-/*
-    material Material of the object hit by ray 
-    world_location World location of intersection point of object and ray
-    surface_normal The normal vector of the object where ray hits
-    scene_lights All the lights currently in the scene
-*/
-Color ShadeRay(Vector3 incoming_ray, SceneObjectInfo* intersected_object_info, Intersection intersection,  float recursion_depth) 
+/**
+ * @brief Determines pixel intensity returned by a ray and object it intersects. 
+ * Calulates contribution of shadows, transparency, reflections, specular/diffuse color, and so on
+ * to said pixel intesity. 
+ * @returns A RGB color with values in range of 0 to 1. 
+ * @param incidence_ray Incoming ray  
+ * @param incidence_object_info Information about object intersected by incident ray
+ * @param incidence_object_intersection The point of intersection between ray and object
+ * @param recursion_depth How deep we want to raytrace within scene
+ * @param incidence_refraction_index Reflectivity of incident object
+ * @param background_color Base color utilized if no intersections are found during raytracing 
+ * @param ray_state Default is "ENTERING." Used to track where ray is in relation to object material during recursive calls to ShadeRay
+**/
+Color ShadeRay(Vector3 incidence_ray, SceneObjectInfo* incidence_object_info, Intersection incidence_object_intersection,  float recursion_depth, float incidence_refraction_index, Color background_color, RayState ray_state) 
 {
-    Vector3 N = intersection.normal;
-    Vector3 I = incoming_ray * -1.0;
+    Vector3 N = incidence_object_intersection.normal;
+    Vector3 I = (incidence_ray * -1.0);
     Color tmp_specular = { 0.0, 0.0, 0.0 };
     Color shadow_mask = { 1.0, 1.0, 1.0 };
     std::vector<bool> obstructions;
-    Material material = intersected_object_info->material;
+    Material material = incidence_object_info->material;
     Color diffuse;
 
-    if (intersected_object_info->has_texture) 
+    // && incidence_object_info->type == "sphere"
+    if (ray_state == RayState::EXITING) {
+        N = (N * -1.0).norm();
+    }
+    float cos_angle_incidence = N.dot(I);
+    
+    
+    /*
+        At point of intersection, either retreive the base diffuse color or the corresponding texture value
+    */
+    if (incidence_object_info->has_texture) 
     {
-        if (intersected_object_info->type == "sphere") 
+        if (incidence_object_info->type == "sphere") 
         {
             // Find texture coorinates
-            float v = acos(intersection.normal.z) / M_PI;
-            float phi = atan2(intersection.normal.y, intersection.normal.x);
+            float v = acos(N.z) / M_PI;
+            float phi = atan2(N.y, N.x);
             float u;
             u = map(phi, -M_PI, M_PI, 0.0, 1.0);
             
             // Find texture pixel value that location
-            float width = static_cast<float>(intersected_object_info->texture->width);
-            float height = static_cast<float>(intersected_object_info->texture->height);
+            float width = static_cast<float>(incidence_object_info->texture->width);
+            float height = static_cast<float>(incidence_object_info->texture->height);
             v = std::clamp<float>(v, 0.0, 1.0);
             u = std::clamp<float>(u, 0.0, 1.0);
 
             // TODO: Map using bi-linear interpolation 
             int i = static_cast<int>(std::clamp<float>(round((height - 1.0) * v), 0.0, height - 1.0));
             int j = static_cast<int>(std::clamp<float>(round((width - 1.0) * u), 0.0, width - 1.0));
-            Mat3D* image = intersected_object_info->texture->image;
+            Mat3D* image = incidence_object_info->texture->image;
             
             // Update diffuse color 
             diffuse = {
-                .r = static_cast<float>(map(image->get(j, i, 0), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0, 1.0)),
-                .g = static_cast<float>(map(image->get(j, i, 1), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0, 1.0)),
-                .b = static_cast<float>(map(image->get(j, i, 2), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0, 1.0))
+                .r = static_cast<float>(map(image->get(j, i, 0), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0.0, 1.0)),
+                .g = static_cast<float>(map(image->get(j, i, 1), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0.0, 1.0)),
+                .b = static_cast<float>(map(image->get(j, i, 2), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0.0, 1.0))
             };
-        } else if (intersected_object_info->type == "face") {
-            Face* face = environment.faces[intersected_object_info->id];
+        } else if (incidence_object_info->type == "face") {
+            Face* face = environment.faces[incidence_object_info->id];
 
-            // Use barycentric coordinate as weights to create a new texture coordinate
+            /* 
+                Get new texture coordinate as linear combination of the 3 texture coordinates,
+                using face' barycentric coordinates as weights
+            */
             float u = 
                 (face->barycentric_cords.x * std::clamp<float>(face->texture_coords[0].x, 0.0, 1.0)) +
                 (face->barycentric_cords.y * std::clamp<float>(face->texture_coords[1].x, 0.0, 1.0)) +
@@ -792,19 +814,19 @@ Color ShadeRay(Vector3 incoming_ray, SceneObjectInfo* intersected_object_info, I
             u = std::clamp<float>(u, 0.0, 1.0);
         
             // Find texture pixel value that location
-            float width = static_cast<float>(intersected_object_info->texture->width);
-            float height = static_cast<float>(intersected_object_info->texture->height);
+            float width = static_cast<float>(incidence_object_info->texture->width);
+            float height = static_cast<float>(incidence_object_info->texture->height);
             
             // TODO: Map using bi-linear interpolation 
             int i = static_cast<int>(std::clamp<float>(round((width - 1.0f) * u), 0.0, width - 1.0));
             int j = static_cast<int>(std::clamp<float>(round((height - 1.0f) * v), 0.0, height - 1.0));
-            Mat3D* image = intersected_object_info->texture->image;
+            Mat3D* image = incidence_object_info->texture->image;
             
             // Update diffuse color 
             diffuse = {
-                .r = static_cast<float>(map(image->get(i, j, 0), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0, 1.0)),
-                .g = static_cast<float>(map(image->get(i, j, 1), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0, 1.0)),
-                .b = static_cast<float>(map(image->get(i, j, 2), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0, 1.0)),
+                .r = static_cast<float>(map(image->get(i, j, 0), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0.0, 1.0)),
+                .g = static_cast<float>(map(image->get(i, j, 1), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0.0, 1.0)),
+                .b = static_cast<float>(map(image->get(i, j, 2), MIN_PIXEL_VALUE, MAX_PIXEL_VALUE, 0.0, 1.0)),
             };
         }
     } 
@@ -812,7 +834,13 @@ Color ShadeRay(Vector3 incoming_ray, SceneObjectInfo* intersected_object_info, I
     {
         diffuse = material.diffuse;
     }
-    
+
+   
+
+    /*
+        Simulate shadows by tracing up from intersection point to light source.
+        If the object has transparency, then the object's opacity discounts the intensity of the shadow.
+    */
     for (Light light : environment.scene_lights) 
     {
         Vector3 L, H;
@@ -831,20 +859,20 @@ Color ShadeRay(Vector3 incoming_ray, SceneObjectInfo* intersected_object_info, I
                 For directional lights, if intersection distance is greater than 0, then a shadow will be cast.
             */
             Vector3 ray = light.direction * -1.0f;
-            std::vector<ObjectIntersections> objects_intersections = TraceRay(intersection.point, ray);
+            std::vector<ObjectIntersections> other_objects_intersections = TraceRay(incidence_object_intersection.point, ray);
 
-            for ( auto [object, intersections] : objects_intersections) 
+            for ( auto [object, intersections] : other_objects_intersections) 
             {    
-                if (object->id == intersected_object_info->id) 
+                if (object->id == incidence_object_info->id) 
                 {
                     continue;
                 }
                 
                 for (auto intersection : intersections) 
                 {
-                    if (intersection.distance > 0.0f) 
+                    if (intersection.distance > environment.other["epsilon"]) 
                     {
-                        shadow_mask = { 0.0, 0.0, 0.0 };
+                        shadow_mask = shadow_mask * (1.0 - object->material.opacity);
                     }
                 }
             }
@@ -856,21 +884,21 @@ Color ShadeRay(Vector3 incoming_ray, SceneObjectInfo* intersected_object_info, I
         else 
         {
  
-            L = (light.position - intersection.point).norm();
-            float distance_to_light = std::sqrt((intersection.point - light.position).square().sum());
+            L = (light.position - incidence_object_intersection.point).norm();
+            float distance_to_light = std::sqrt((incidence_object_intersection.point - light.position).square().sum());
 
             /*
                 Determine if shadow exists:
                 Ray-trace from point of intersection to light source, detecting other scene objects are occluding light.
             */
-            std::vector<ObjectIntersections> objects_intersections = TraceRay(intersection.point, L);
+            std::vector<ObjectIntersections> other_object_intersections = TraceRay(incidence_object_intersection.point, L);
           
-            for ( auto [object, intersections] : objects_intersections) 
+            for ( auto [object, intersections] : other_object_intersections) 
             {    
                 /*
                     We do not consider self intersections
                 */
-                if (object->id == intersected_object_info->id) {
+                if (object->id == incidence_object_info->id) {
                     continue;
                 }
                 
@@ -879,9 +907,9 @@ Color ShadeRay(Vector3 incoming_ray, SceneObjectInfo* intersected_object_info, I
                 */ 
                 for (auto intersection : intersections) 
                 {
-                    if (intersection.distance > 0.0f && intersection.distance < distance_to_light) 
+                    if (intersection.distance > environment.other["epsilon"] && intersection.distance < distance_to_light) 
                     {
-                        shadow_mask = { 0.0, 0.0, 0.0 };
+                        shadow_mask = shadow_mask * (1.0 - object->material.opacity);
                     }
                 }  
             }
@@ -895,55 +923,137 @@ Color ShadeRay(Vector3 incoming_ray, SceneObjectInfo* intersected_object_info, I
             specular_component
         ));
     }
+    
 
-    /*
-        Determine contribution of pixel intensity from reflections:
-        First we need the light incidence ray, R.
-    */
-    // I = I * -1.0;
-    Vector3 R = N*(2.0*(N.dot(I))) - I;
-    float refraction_index = intersected_object_info->material.refraction_index;
-    float F_0 = powf((refraction_index - 1.0)/(refraction_index + 1), 2.0);
-    float F = F_0 + (1 - F_0)*powf(1 - (I.dot(N)), 5.0); 
+    
+    float transmission_refraction_index = incidence_object_info->material.refraction_index;
+    float F_0 = powf((transmission_refraction_index - 1.0)/(transmission_refraction_index + 1.0), 2.0); 
+    float F = F_0 + ((1.0 - F_0)*powf(1.0 - (cos_angle_incidence), 5.0)); 
+
+    float snells_ratio = incidence_refraction_index / transmission_refraction_index;
+    float critical_angle = asinf(transmission_refraction_index / incidence_refraction_index); 
+    float incidence_angle = acosf(cos_angle_incidence);
+    bool total_internal_reflection = (critical_angle < incidence_angle) && (incidence_angle < (90.0 * M_PI / 180.0));
 
     Color tmp_reflection = {.r=0.0, .g=0.0, .b=0.0};
-    if (recursion_depth >= 1 && refraction_index > 0.0) {
+    Color tmp_transparency = {.r=0.0, .g=0.0, .b=0.0};
+    
+    /*
+        Determine contribution of pixel intensity from transparency effects:
+        Do this by recursively raytracing from the transmission ray "T" (Ray that enters new medium).
+
+        Assuming the material the ray enters is not fully opaque
+        or refracted back into the same medium it arrived from (total internal reflection), 
+        we then trace the ray through the scene (up to "recursion_depth" times).
+    */
+    
+    // bool total_internal_reflection = sinf(incidence_angle) > (transmission_refraction_index / incidence_refraction_index);
+    if (recursion_depth > 0 && !total_internal_reflection && incidence_object_info->material.opacity < 1.0) {
+        // Transmission ray
+        Vector3 T = ((N * -1.0) * sqrtf(1.0 - (snells_ratio*snells_ratio*(1.0-(cos_angle_incidence*cos_angle_incidence))))) + ((N*cos_angle_incidence - I)*snells_ratio);
 
         Intersection min_intersection;
         SceneObjectInfo* intersected_object = nullptr; 
         float min_distance = std::numeric_limits<float>::max();
-        for (auto & object_intersections : TraceRay(intersection.point, R)) 
+        for (auto & [object, intersections] : TraceRay(incidence_object_intersection.point, T)) 
         {   
-            if (object_intersections.object_info->id == intersected_object_info->id) 
-            {
-                continue;
-            } 
-            for (auto & intersection : object_intersections.intersections) 
+            for (auto & intersection : intersections) 
             {   
-                
-                if (intersection.distance > 0.0f && intersection.distance < min_distance) {
+                /*
+                    We do not consider self intersections
+                */
+                // if (object->id == incidence_object_info->id) {
+                //     continue;
+                // }
+                             
+                // Make distance greater than some small number here, likely the same intersection point.
+                if (intersection.distance > environment.other["epsilon"] && intersection.distance < min_distance) {
                     min_distance = intersection.distance;
-                    intersected_object = object_intersections.object_info;
+                    
+                    // The case when transmission ray is exiting the same material
                     min_intersection = intersection;
+                    intersected_object = object;  
                 }
             }
         }
 
         if (intersected_object != nullptr) {
-            tmp_reflection = ShadeRay(R, intersected_object, min_intersection, recursion_depth - 1) * F;
+            // Attenuate light through transparent object via Beer's law
+            if (incidence_object_info->id == intersected_object->id)  {
+                // tmp_transparency = ShadeRay(T, intersected_object, min_intersection, recursion_depth-1, environment.other["bkg_refraction_index"], background_color, EXITING)*(1.0-F)*(expf(-1.0 * incidence_object_info->material.opacity*min_intersection.distance));
+                tmp_transparency = ShadeRay(T, intersected_object, min_intersection, recursion_depth-1, environment.other["bkg_refraction_index"], background_color, RayState::EXITING)*(1.0-F)*(1.0 - incidence_object_info->material.opacity);
+            } else {
+                // tmp_transparency = ShadeRay(T, intersected_object, min_intersection, recursion_depth-1, transmission_refraction_index, background_color, ENTERING)*(1.0-F)*(expf(-1.0 * incidence_object_info->material.opacity*min_intersection.distance)); //*(1.0-F)*(1.0 - incidence_object_info->material.opacity);
+                tmp_transparency = ShadeRay(T, intersected_object, min_intersection, recursion_depth-1, transmission_refraction_index, background_color, RayState::ENTERING)*(1.0-F)*(1.0 - incidence_object_info->material.opacity);
+            }
+        } else {
+            tmp_transparency = background_color * (1.0-F)*(1.0 - incidence_object_info->material.opacity);
         }
-    } 
+    }
+
+    /*
+        Determine contribution of pixel intensity from reflections:
+        Simulate reflections using Schlick's approximation of Fresnel Reflectance.
+        
+        To do so, we recursively raytrace from the incidence ray "R" (Ray that is reflected off the surface of intersected object).
+        This ray will bounce around the scene (traced up to "recursion_depth" times). 
+        The RGB value returned by this traced ray is then multiplied by the Schlick approximation, "F",
+        of the material surface's Fresnal reflectance.
+    */
+    if (recursion_depth > 0 && F != 0.0 && incidence_object_info->material.ks > 0.0) 
+    {
+        // Refraction ray
+        Vector3 R = N*(2.0*(cos_angle_incidence)) - I;
+        Intersection min_intersection;
+        SceneObjectInfo* intersected_object = nullptr; 
+        float min_distance = std::numeric_limits<float>::max();
+        for (auto& [object, intersections] : TraceRay(incidence_object_intersection.point, R)) 
+        {
+            /*
+                We do not consider self intersections
+            */
+            // if (object->id == incidence_object_info->id) {
+            //     continue;
+            // }
+
+            for (auto & intersection : intersections) 
+            {
+                if (intersection.distance > environment.other["epsilon"] && intersection.distance < min_distance) 
+                {
+                    min_distance = intersection.distance;
+                    intersected_object = object;
+                    min_intersection = intersection;
+                }
+            }
+        }
+
+        if (intersected_object != nullptr) 
+        {
+            // if (incidence_object_info->id == intersected_object->id) {
+            //     tmp_reflection = ShadeRay(R, intersected_object, min_intersection, recursion_depth - 1, environment.other["bkg_refraction_index"], background_color, RayState::EXITING) * F;
+            // } 
+            // else {
+            //     tmp_reflection = ShadeRay(R, intersected_object, min_intersection, recursion_depth - 1, intersected_object->material.refraction_index, background_color, RayState::ENTERING) * F;
+            // }
+                tmp_reflection = ShadeRay(R, intersected_object, min_intersection, recursion_depth - 1, intersected_object->material.refraction_index, background_color, RayState::ENTERING) * F;
+            
+        } else {
+            tmp_reflection = background_color * F;
+        }
+    }
 
     /*
         Ambient + specular + reflection
-    */         
-    return ((diffuse * material.ka) + tmp_specular) + tmp_reflection;
+    */
+    return (diffuse * material.ka) + tmp_specular + tmp_transparency + tmp_reflection;
 }
 
-
-/*
-    Returns objectTraceRay and their intersection points with provided ray
-*/
+/**
+ * @brief Traces ray into scene, finding intersections with any and all scene objects.
+ * @returns Returns a vector of intersection objects with points of intersection
+ * @param ray Outgoing ray
+ * @param view_origin origin of the ray
+**/
 std::vector<ObjectIntersections> TraceRay(Vector3 view_origin, Vector3 ray) 
 {
     std::vector<ObjectIntersections> ray_trace_results;
@@ -1124,9 +1234,10 @@ std::vector<ObjectIntersections> TraceRay(Vector3 view_origin, Vector3 ray)
                         info.point = intersection;
                         info.normal = normal;
 
-                        ObjectIntersections object_intersections;
-                        object_intersections.object_info = object_info;
-                        object_intersections.intersections = { info };
+                        ObjectIntersections object_intersections = { 
+                            .object_info = object_info,
+                            .intersections = { info }
+                        };
                         ray_trace_results.push_back(object_intersections);   
                     }
                 }

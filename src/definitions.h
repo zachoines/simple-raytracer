@@ -5,6 +5,12 @@
 #include <string>
 #include <stdexcept>
 #include "config.h"
+
+enum RayState {
+    ENTERING,
+    EXITING
+};
+
 struct Point {
     float x;
     float y;
@@ -178,6 +184,13 @@ struct Color
             .g = from.y,
             .b = from.z
         });
+    }
+
+    bool operator == (Color other) {
+        return 
+        (this->r == other.r) &&
+        (this->g == other.g) &&
+        (this->b == other.b);
     }
 };
 
