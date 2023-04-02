@@ -6,4 +6,4 @@ set(CMAKE_CXX_STANDARD 20)            # Enable c++20 standard
 file(GLOB_RECURSE SOURCES "main.cpp" "/src/*.h")
 
 # Add executable target with source files listed in SOURCE_FILES variable
-add_executable(raytracer1c ${SOURCES})
+add_executable(raytracer1d ${SOURCES})

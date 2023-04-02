@@ -11,7 +11,7 @@
 */
 Mat3D create_view_window_and_ray_trace(Vector3 view_origin, Vector3 view_direction, Vector3 view_up, float fov_h, float res_h, float res_w, Color background_color);
 std::vector<ObjectIntersections> TraceRay(Vector3 view_origin, Vector3 ray);
-Color ShadeRay(Vector3 incoming_ray, SceneObjectInfo* intersected_object_info, Intersection intersection,  float recursion_depth=5, float incidence_refraction_index = 1.0, Color background_color={1.0, 1.0, 1.0}, RayState ray_state=RayState::ENTERING);
+Color ShadeRay(Vector3 incoming_ray, SceneObjectInfo* intersected_object_info, Intersection intersection,  float recursion_depth=5, float incidence_refraction_index = 1.0, Color background_color={1.0, 1.0, 1.0}, RayState ray_state =RayState::ENTERING);
 
 /*
     Valid Args for config file:
@@ -270,7 +270,7 @@ int main(int argc,char* argv[])
                                 material.n = std::stof(arguments[9]);
 
                                 if (arguments.size() == 12) {
-                                    material.opacity = std::stof(arguments[10]);
+                                    material.opacity = std::clamp<float>(std::stof(arguments[10]), 0.0, 1.0);
                                     material.refraction_index = std::stof(arguments[11]);
                                 } else {
                                     material.opacity = 1.0; // Fully opaque by default
@@ -752,16 +752,20 @@ Color ShadeRay(Vector3 incidence_ray, SceneObjectInfo* incidence_object_info, In
     Vector3 I = (incidence_ray * -1.0);
     Color tmp_specular = { 0.0, 0.0, 0.0 };
     Color shadow_mask = { 1.0, 1.0, 1.0 };
-    std::vector<bool> obstructions;
-    Material material = incidence_object_info->material;
     Color diffuse;
-
-    // && incidence_object_info->type == "sphere"
-    if (ray_state == RayState::EXITING) {
-        N = (N * -1.0).norm();
-    }
+    Color tmp_reflection = { 0.0, 0.0, 0.0 };
+    Color tmp_transparency = { 0.0, 0.0, 0.0 };
+    Material material = incidence_object_info->material;
+    std::vector<bool> obstructions;
     float cos_angle_incidence = N.dot(I);
-    
+    RayState previous_ray_state = ray_state;
+    RayState next_ray_state;
+
+    if (cos_angle_incidence <= 0.0 && incidence_object_info->type == "sphere" && ray_state == RayState::EXITING) {
+        N = (N * -1.0);
+        cos_angle_incidence = N.dot(I);
+    }
+
     
     /*
         At point of intersection, either retreive the base diffuse color or the corresponding texture value
@@ -834,8 +838,6 @@ Color ShadeRay(Vector3 incidence_ray, SceneObjectInfo* incidence_object_info, In
     {
         diffuse = material.diffuse;
     }
-
-   
 
     /*
         Simulate shadows by tracing up from intersection point to light source.
@@ -924,19 +926,15 @@ Color ShadeRay(Vector3 incidence_ray, SceneObjectInfo* incidence_object_info, In
         ));
     }
     
-
-    
     float transmission_refraction_index = incidence_object_info->material.refraction_index;
-    float F_0 = powf((transmission_refraction_index - 1.0)/(transmission_refraction_index + 1.0), 2.0); 
-    float F = F_0 + ((1.0 - F_0)*powf(1.0 - (cos_angle_incidence), 5.0)); 
+    float F_0 = powf((transmission_refraction_index - incidence_refraction_index)/(transmission_refraction_index + incidence_refraction_index), 2.0); 
+    float F = std::clamp<float>(F_0 + ((1.0 - F_0)*powf(1.0 - (cos_angle_incidence), 5.0)), F_0, 1.0); 
 
-    float snells_ratio = incidence_refraction_index / transmission_refraction_index;
+    float snells_ratio = (incidence_refraction_index / transmission_refraction_index);
     float critical_angle = asinf(transmission_refraction_index / incidence_refraction_index); 
     float incidence_angle = acosf(cos_angle_incidence);
     bool total_internal_reflection = (critical_angle < incidence_angle) && (incidence_angle < (90.0 * M_PI / 180.0));
-
-    Color tmp_reflection = {.r=0.0, .g=0.0, .b=0.0};
-    Color tmp_transparency = {.r=0.0, .g=0.0, .b=0.0};
+    
     
     /*
         Determine contribution of pixel intensity from transparency effects:
@@ -946,11 +944,18 @@ Color ShadeRay(Vector3 incidence_ray, SceneObjectInfo* incidence_object_info, In
         or refracted back into the same medium it arrived from (total internal reflection), 
         we then trace the ray through the scene (up to "recursion_depth" times).
     */
-    
-    // bool total_internal_reflection = sinf(incidence_angle) > (transmission_refraction_index / incidence_refraction_index);
     if (recursion_depth > 0 && !total_internal_reflection && incidence_object_info->material.opacity < 1.0) {
+        
         // Transmission ray
-        Vector3 T = ((N * -1.0) * sqrtf(1.0 - (snells_ratio*snells_ratio*(1.0-(cos_angle_incidence*cos_angle_incidence))))) + ((N*cos_angle_incidence - I)*snells_ratio);
+        Vector3 T = (N * -1.0) 
+                    * 
+                    sqrtf(
+                        1.0 - ( powf(snells_ratio, 2.0)*(1.0-powf(cos_angle_incidence, 2.0)))
+                    ) 
+                    + 
+                    (
+                        ((N*cos_angle_incidence) - I)*snells_ratio
+                    );
 
         Intersection min_intersection;
         SceneObjectInfo* intersected_object = nullptr; 
@@ -958,14 +963,7 @@ Color ShadeRay(Vector3 incidence_ray, SceneObjectInfo* incidence_object_info, In
         for (auto & [object, intersections] : TraceRay(incidence_object_intersection.point, T)) 
         {   
             for (auto & intersection : intersections) 
-            {   
-                /*
-                    We do not consider self intersections
-                */
-                // if (object->id == incidence_object_info->id) {
-                //     continue;
-                // }
-                             
+            {  
                 // Make distance greater than some small number here, likely the same intersection point.
                 if (intersection.distance > environment.other["epsilon"] && intersection.distance < min_distance) {
                     min_distance = intersection.distance;
@@ -977,19 +975,45 @@ Color ShadeRay(Vector3 incidence_ray, SceneObjectInfo* incidence_object_info, In
             }
         }
 
+        // Recurse on transmitted ray
         if (intersected_object != nullptr) {
-            // Attenuate light through transparent object via Beer's law
-            if (incidence_object_info->id == intersected_object->id)  {
-                // tmp_transparency = ShadeRay(T, intersected_object, min_intersection, recursion_depth-1, environment.other["bkg_refraction_index"], background_color, EXITING)*(1.0-F)*(expf(-1.0 * incidence_object_info->material.opacity*min_intersection.distance));
-                tmp_transparency = ShadeRay(T, intersected_object, min_intersection, recursion_depth-1, environment.other["bkg_refraction_index"], background_color, RayState::EXITING)*(1.0-F)*(1.0 - incidence_object_info->material.opacity);
+        
+            float refraction_index = 1.0;
+            // When incident ray enters face or sphere...
+            if (previous_ray_state == RayState::ENTERING) {
+                //  ...and transmitted ray exits other side of sphere
+                if (intersected_object->id == incidence_object_info->id) {
+                    next_ray_state = RayState::EXITING;
+                    refraction_index = incidence_object_info->material.refraction_index;
+
+                // .. and transmitted ray passes into another internal object 
+                } else {
+
+                    next_ray_state = RayState::ENTERING;
+                    refraction_index = incidence_object_info->material.refraction_index;
+                }
+            // When incident ray is exiting 
             } else {
-                // tmp_transparency = ShadeRay(T, intersected_object, min_intersection, recursion_depth-1, transmission_refraction_index, background_color, ENTERING)*(1.0-F)*(expf(-1.0 * incidence_object_info->material.opacity*min_intersection.distance)); //*(1.0-F)*(1.0 - incidence_object_info->material.opacity);
-                tmp_transparency = ShadeRay(T, intersected_object, min_intersection, recursion_depth-1, transmission_refraction_index, background_color, RayState::ENTERING)*(1.0-F)*(1.0 - incidence_object_info->material.opacity);
+                next_ray_state = RayState::ENTERING;
+                refraction_index = environment.other["bkg_refraction_index"];
             }
+
+            tmp_transparency = ShadeRay(
+                T,
+                intersected_object, 
+                min_intersection, 
+                recursion_depth-1, 
+                refraction_index,
+                background_color,
+                next_ray_state
+            )*(1.0-F)*(1.0 - incidence_object_info->material.opacity);
+        
+        // Use background color if no object was intersected
         } else {
             tmp_transparency = background_color * (1.0-F)*(1.0 - incidence_object_info->material.opacity);
         }
     }
+
 
     /*
         Determine contribution of pixel intensity from reflections:
@@ -1007,15 +1031,9 @@ Color ShadeRay(Vector3 incidence_ray, SceneObjectInfo* incidence_object_info, In
         Intersection min_intersection;
         SceneObjectInfo* intersected_object = nullptr; 
         float min_distance = std::numeric_limits<float>::max();
+
         for (auto& [object, intersections] : TraceRay(incidence_object_intersection.point, R)) 
         {
-            /*
-                We do not consider self intersections
-            */
-            // if (object->id == incidence_object_info->id) {
-            //     continue;
-            // }
-
             for (auto & intersection : intersections) 
             {
                 if (intersection.distance > environment.other["epsilon"] && intersection.distance < min_distance) 
@@ -1027,23 +1045,36 @@ Color ShadeRay(Vector3 incidence_ray, SceneObjectInfo* incidence_object_info, In
             }
         }
 
-        if (intersected_object != nullptr) 
+        // Recurse on reflected ray
+        if (intersected_object != nullptr)
         {
-            // if (incidence_object_info->id == intersected_object->id) {
-            //     tmp_reflection = ShadeRay(R, intersected_object, min_intersection, recursion_depth - 1, environment.other["bkg_refraction_index"], background_color, RayState::EXITING) * F;
-            // } 
-            // else {
-            //     tmp_reflection = ShadeRay(R, intersected_object, min_intersection, recursion_depth - 1, intersected_object->material.refraction_index, background_color, RayState::ENTERING) * F;
-            // }
-                tmp_reflection = ShadeRay(R, intersected_object, min_intersection, recursion_depth - 1, intersected_object->material.refraction_index, background_color, RayState::ENTERING) * F;
+            float refraction_index = 1.0;
+
+            // When incident ray bounces off outward surface of object...
+            if (previous_ray_state == RayState::ENTERING) {
+                refraction_index = environment.other["bkg_refraction_index"];
             
+            // When incident ray bounces off internal side of sphere.... Technically doesnt exit/enter in this case, but need to invert normal still
+            } else {
+                refraction_index = incidence_object_info->material.refraction_index;
+            }
+            tmp_reflection = ShadeRay(
+                R, 
+                intersected_object, 
+                min_intersection, 
+                recursion_depth - 1, 
+                refraction_index,
+                background_color,
+                ray_state=RayState::ENTERING
+            ) * F;
+        // Use background color if no object was intersected
         } else {
             tmp_reflection = background_color * F;
         }
     }
 
     /*
-        Ambient + specular + reflection
+        Ambient + diffuse + specular + reflection + transparency
     */
     return (diffuse * material.ka) + tmp_specular + tmp_transparency + tmp_reflection;
 }
