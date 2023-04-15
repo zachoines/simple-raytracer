@@ -2,15 +2,16 @@
 This program is a raytracing based renderer that generates images using a properties file as input. This is a work in progress. 
 Currently supported features are: 
 - Reflections
+- Translucency
 - Hard shadows
 - Point and directional lights
 - Phong Illumination Materials 
 - Spheres
-- triangles (faces)
-- textures
+- Triangles (faces)
+- Textures
 
 
-![Example](Examples/earth.png)
+![Example](Examples/demo_image.png)
 
 # Compile program
 First navigate to directory with main.cpp. Then run these commands:  
@@ -27,21 +28,22 @@ You can run the program like so:
 - .\raytracer1b.exe .\rubber_eraser.txt
 
 Valid arguements for config files include:
-- eye   eyex eyey eyez
-- viewdir   vdirx  vdiry  vdirz
-- updir   upx  upy  upz
-- hfov   fovh
-- imsize   width  height
-- bkgcolor   r  g  b
-- mtlcolor   Od Od Od Os Os Os ka kd ks n
-- light x y z w r g b
-- sphere   cx  cy  cz  r
-- n nx ny nz (Vertex normal)
-- \# 
-- f v1/vt1/vn1 v2/vt2/vn2 v3/vt2/vn
-- f v1//vn1 v2//vn2 v3//vn3
-- f v1/vt1 v2/vt2 v3/vt2
-- texture texture.ppm
+    eye eyex eyey eyez                         (The location of the 'eye' within scene)
+    viewdir vdirx  vdiry  vdirz                (Defines the direction the 'eye' is looking)
+    updir upx  upy  upz                        (Roll of the camera)
+    hfov fovh                                  (Horizonal field of view)
+    imsize width  height                       (Output image dimentions)
+    bkgcolor r  g  b  η                        (Scene background color. Param η is optional) 
+    mtlcolor Od Od Od Os Os Os ka kd ks n α η  (Material color. Params α η are optional)
+    texture texture.ppm                        (Texture to apply to model)           
+    light x y z w r g b                        (Scene light. Directional or point)
+    sphere cx  cy  cz  r                       (Sphere defined by center and radiusm)
+    vn nx ny nz                                (Vertex normal)
+    vt tx ty                                   (texture coordinates)
+    #                                          (Single line comment)
+    f v1/vt1/vn1 v2/vt2/vn2 v3/vt2/vn          (smooth-shaded, textured triangle)
+    f v1//vn1 v2//vn2 v3//vn3                  (smooth-shaded, untextured triangle)
+    f v1/vt1 v2/vt2 v3/vt2                     (non-smooth-shaded, textured triangle)
 
 # Configure Debugging on Windows
 Follow tutorial to install GNU C++ on windows:

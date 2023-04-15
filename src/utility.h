@@ -1,6 +1,15 @@
 #pragma once
 #include <iostream>
 #include <string>
+#include "definitions.h"
+
+bool objectInStack(std::vector<SceneObjectInfo*> &object_stack, SceneObjectInfo* object) {
+    if (std::find(object_stack.begin(), object_stack.end(), object) != object_stack.end()) {
+        return true;
+    } else {
+        return false;
+    }
+}
 
 /*
     Transforms an input from range 1 to range 2
